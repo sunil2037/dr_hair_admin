@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dr. Hair Admin Panel
 
-## Getting Started
+Next.js and TypeScript admin-panel UI for the Dr. Hair mobile app.
 
-First, run the development server:
+## Start locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`. The sign-in screen is a UI preview only. The email selects a seeded demo role; any password is accepted for these UI-only accounts:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Admin: `nandini.rao@drhair.health`
+- Super Admin (Dr. Jai Bansal): `jai.bansal@drhair.health`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Structure
 
-## Learn More
+```text
+src/
+  app/                         # Next.js entry point and global styling
+  features/
+    admin-users/               # Super Admin team and audit screens
+    app-management/            # Content, notifications, updates, feature controls
+    commerce/                  # Products, orders, coupons, referrals
+    content/                   # Banners, videos, patient stories
+    dashboard/                 # Role-aware workspace overview
+    feature-controls/           # App feature and admin-module controls
+    operations/                # Patients, reports, orders, clinic appointments
+    shared/
+      components/              # Shell, sign-in, dialogs, reusable UI
+      lib/                     # Access rules and sample records
+      types/                   # Shared role, record, and feature types
+```
 
-To learn more about Next.js, take a look at the following resources:
+Feature screens stay grouped by domain. Shared UI and role/access rules live in `shared/`; sample records live behind `demo-data.ts`. This keeps screens independent and gives future API integration clear places to add feature-specific data access without introducing backend code into the UI.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Demo behavior
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Super Admin can see all Admin workspace areas plus Admin Users, App Management controls, and Audit Log.
+- Super Admin can invite demo admins, assign modules and actions, edit access, and suspend/reactivate demo accounts.
+- App feature controls update local demo state. Admin Panel module controls also update which workspace sections appear in the Admin preview.
+- Clinic appointments are browser previews from staff and sample app sources. The Flutter app has a separate local physical visit request flow for Dr. Jai Bansal; requests do not sync yet.
+- Content/product forms, search, status filters, and record detail dialogs use local sample data.
+- No authentication, API calls, or database writes are connected. Feature changes do not affect the Flutter app yet.
 
-## Deploy on Vercel
+## Brand
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The interface uses the Flutter app palette: navy `#1A365D`, teal `#0D9488`, canvas `#F7F9FC`, and border `#E2E8F0`.

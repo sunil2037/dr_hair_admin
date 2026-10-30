@@ -89,3 +89,4 @@ echo -e "  🌐 Production URL: ${BOLD}${CYAN}https://adminpanal-ruby.vercel.app
 echo -e "  🌐 Direct Domain:   ${BOLD}${CYAN}https://adminpanal-test11-b8fc.vercel.app${NC}"
 echo -e "  📦 GitHub Repo:     ${BOLD}https://github.com/sunil2037/dr_hair_admin${NC}"
 echo ""
+

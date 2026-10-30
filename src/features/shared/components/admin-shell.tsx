@@ -91,8 +91,8 @@ export function AdminShell({
         <div className="sidebar-bottom">
           <div className="help-card"><strong>Need a hand?</strong><p>Visit the operations guide for help managing Dr. Hair.</p></div>
           <div className="user-tile">
-            <div className="avatar">{role === "super-admin" ? "JB" : "NR"}</div>
-            <div style={{ minWidth: 0, flex: 1 }}><div className="user-name">{userName}</div><div className="user-role">{role === "super-admin" ? "Super Admin · Doctor" : isOwner ? "Admin preview" : "Admin"}</div></div>
+            <div className="avatar">{userName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "AD"}</div>
+            <div style={{ minWidth: 0, flex: 1 }}><div className="user-name">{userName}</div><div className="user-role">{role === "super-admin" ? "Super Admin" : isOwner ? "Admin preview" : "Admin"}</div></div>
             <button className="row-action" aria-label="Sign out" title="Sign out" onClick={onSignOut}><LogOut size={15} /></button>
           </div>
         </div>
@@ -114,7 +114,7 @@ export function AdminShell({
               {role === "admin" && <select className="role-select admin-preview-select h-8 max-w-[5.25rem] sm:h-9 sm:max-w-[8rem]" aria-label="Preview admin account" title="Preview admin account" value={previewAdminId} onChange={(event) => onAdminPreviewChange(event.target.value)}>
                 {adminOptions.map((admin) => <option key={admin.id} value={admin.id}>{admin.name.split(" ")[0]}{admin.status === "Suspended" ? " · Suspended" : ""}</option>)}
               </select>}
-            </> : <span className="role-demo"><ShieldCheck size={13} /> {permissions.length} permissions assigned</span>}
+            </> : <span className="role-demo"><ShieldCheck size={13} /> {role === "super-admin" ? "Super Admin" : "Admin"}</span>}
           </div>
         </header>
         {children}

@@ -1,9 +1,6 @@
 import { cookies } from "next/headers";
 import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../../_lib/backend";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 export async function POST(request: Request) {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   if (!token) return noStoreJson({ message: "Sign in to upload media." }, 401);

@@ -1,8 +1,6 @@
 import { cookies } from "next/headers";
 import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../_lib/backend";
 
-export const dynamic = "force-dynamic";
-
 export async function GET(request: Request) {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;

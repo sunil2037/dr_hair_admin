@@ -46,7 +46,7 @@ export function Dashboard({ role, userName, onNavigate, permissions = [], events
   const largestQueue = Math.max(1, ...queueBars.map((item) => item.count));
 
   return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
-    <PageHeader eyebrow={isSuper ? "Clinic owner · Clinical overview" : "Admin workspace"} title={isSuper ? "Good morning, Dr. Jai Bansal" : `Welcome, ${userName}`} description="A current view of this clinic’s patient care, consultations, reports, and operations." action={<>
+    <PageHeader eyebrow={isSuper ? "Super Admin · Clinical overview" : "Admin workspace"} title={`Welcome, ${userName}`} description="A current view of this clinic’s patient care, consultations, reports, and operations." action={<>
       {permitted("patients.view") && <button className="button button-secondary" onClick={() => onNavigate("patients")}><FileText size={14} />Patient records</button>}
       {isSuper ? <button className="button button-primary" onClick={() => onNavigate("team")}><Plus size={15} />Manage admins</button> : permitted("assessments.review") ? <button className="button button-primary" onClick={() => onNavigate("patients")}><ClipboardCheck size={14} />Review assessments</button> : null}
     </>} />

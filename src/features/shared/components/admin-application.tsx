@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AdminUsers } from "../../admin-users/components/admin-users";
+import { AdminAccountManagement } from "../../admin-users/components/admin-account-management";
 import { AuditLog } from "../../admin-users/components/audit-log";
 import { AppManagement } from "../../app-management/components/app-management";
 import { ProductManagement } from "../../commerce/components/product-management";
@@ -21,13 +21,13 @@ const initialAuditEvents = initialAudit.map((event) => ({ ...event, type: event.
 export function AdminApplication() {
   const [auth, setAuth] = useState<{ status: "checking" | "signed-out" | "signed-in"; admin?: AdminIdentity }>({ status: "checking" });
   const [actorEmail, setActorEmail] = useState("");
-  const role: Role = "admin";
+  const role: Role = auth.admin?.role === "super_admin" ? "super-admin" : "admin";
   const previewAdminId = "";
   const [page, setPage] = useState<PageKey>("overview");
   const [globalSearch, setGlobalSearch] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [toast, setToast] = useState("");
-  const [adminRecords, setAdminRecords] = useSessionState<AdminRecord[]>("drhair-demo-admins", initialAdmins);
+  const [adminRecords] = useSessionState<AdminRecord[]>("drhair-demo-admins", initialAdmins);
   const [features, setFeatures] = useSessionState<FeatureRecord[]>("drhair-demo-app-features", initialFeatures);
   const [panelAccess, setPanelAccess] = useSessionState<PanelFeatureAccess>("drhair-demo-panel-access", { patients: true, catalog: true, content: true, orders: true, bookings: true, tests: true });
   const [events, setEvents] = useSessionState<AuditEventRecord[]>("drhair-demo-audit", initialAuditEvents);
@@ -35,8 +35,6 @@ export function AdminApplication() {
   const closeToast = useCallback(() => setToast(""), []);
   const onMobileOpenChange = useCallback((open: boolean) => setMobileOpen(open), []);
   const isOwner = false;
-  // The backend currently issues one allowlisted admin role. Keep the panel
-  // read-only until server-side granular permissions are added.
   const permissions = useMemo<AdminPermissionId[]>(() => ["patients.view"], []);
   const visibleName = auth.admin?.name || actorEmail || "Admin";
   const actorName = visibleName;
@@ -51,7 +49,7 @@ export function AdminApplication() {
         }
         const result = await response.json().catch(() => ({}));
         const admin = result?.admin as AdminIdentity | undefined;
-        if (!result?.authenticated || !admin?.email || admin.role !== "admin") {
+        if (!result?.authenticated || !admin?.email || !["admin", "super_admin"].includes(admin.role)) {
           setAuth({ status: "signed-out" });
           return;
         }
@@ -91,10 +89,10 @@ export function AdminApplication() {
       case "orders": return <OperationsPage kind="orders" globalSearch={globalSearch} onToast={showToast} permissions={permissions} onAudit={recordAudit} />;
       case "tests": return <HairTestsPage patients={demoPatients} permissions={permissions} actor={actorName} onToast={showToast} onAudit={recordAudit} />;
       case "bookings": return <OperationsPage kind="bookings" globalSearch={globalSearch} onToast={showToast} permissions={permissions} onAudit={recordAudit} />;
-      case "team": return <Denied />;
-      case "activity": return <Denied />;
+      case "team": return role === "super-admin" ? <AdminAccountManagement /> : <Denied />;
+      case "activity": return role === "super-admin" ? <AuditLog globalSearch={globalSearch} onToast={showToast} events={events} /> : <Denied />;
     }
-  }, [actorName, adminRecords, changePanelAccess, events, features, globalSearch, navigate, page, panelAccess, permissions, recordAudit, role, setAdminRecords, setFeatures, showToast, visibleName]);
+  }, [actorName, adminRecords, changePanelAccess, events, features, globalSearch, navigate, page, panelAccess, permissions, recordAudit, role, setFeatures, showToast, visibleName]);
 
   if (auth.status === "checking") return <main className="signin-page grid min-h-screen place-items-center"><p className="text-sm text-slate-600">Checking secure admin session…</p></main>;
 
@@ -114,5 +112,5 @@ export function AdminApplication() {
 }
 
 function Denied() {
-  return <main className="page-wrap"><section className="card empty-state">This section is available to Dr. Jai Bansal only.</section></main>;
+  return <main className="page-wrap"><section className="card empty-state">Super Admin access is required for this section.</section></main>;
 }

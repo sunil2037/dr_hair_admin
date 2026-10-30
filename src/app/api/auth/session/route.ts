@@ -2,8 +2,6 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../_lib/backend";
 
-export const dynamic = "force-dynamic";
-
 export async function GET() {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
@@ -15,8 +13,14 @@ export async function GET() {
       cache: "no-store",
     });
     const result = await readJson(upstream);
-    if (upstream.ok && result.status === "success" && result.data && typeof result.data === "object") {
-      return noStoreJson({ authenticated: true, admin: result.data });
+    const identity = result.data && typeof result.data === "object" ? result.data as Record<string, unknown> : {};
+    if (
+      upstream.ok
+      && result.status === "success"
+      && typeof identity.email === "string"
+      && (identity.role === "admin" || identity.role === "super_admin")
+    ) {
+      return noStoreJson({ authenticated: true, admin: identity });
     }
     if (upstream.status >= 500) {
       return noStoreJson({ authenticated: false, message: "The sign-in service is temporarily unavailable." }, 503);

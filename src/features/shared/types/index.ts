@@ -49,6 +49,12 @@ export interface PatientRecord {
   assessment: string;
   submitted: string;
   status: Status;
+  phone?: string;
+  age?: number | null;
+  gender?: string | null;
+  city?: string | null;
+  occupation?: string | null;
+  photoUrl?: string | null;
 }
 
 export interface AdminRecord {

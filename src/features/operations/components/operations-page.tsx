@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -67,7 +67,15 @@ function CareOperationsPage({
   permissions: AdminPermissionId[];
   onAudit: (action: string, target: string) => void;
 }) {
-  const [patients] = useSessionState<PatientRecord[]>("drhair-demo-patients", initialPatients);
+  const [demoPatients] = useSessionState<PatientRecord[]>("drhair-demo-patients", initialPatients);
+  const isPatient = kind === "patients";
+  const [apiPatients, setApiPatients] = useState<PatientRecord[]>([]);
+  const [apiPatientTotal, setApiPatientTotal] = useState(0);
+  const [patientPageState, setPatientPageState] = useState({ search: "", page: 1 });
+  const [apiPatientState, setApiPatientState] = useState<"loading" | "ready" | "error">("loading");
+  const [apiPatientError, setApiPatientError] = useState("");
+  const [reloadPatients, setReloadPatients] = useState(0);
+  const patients = isPatient ? apiPatients : demoPatients;
   const [bookings, setBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
   const [notifications, setNotifications] = useSessionState<PatientReportNotification[]>("drhair-demo-patient-notifications", []);
   const [profiles, setProfiles] = useSessionState("drhair-demo-patient-profiles", patientClinicalProfiles);
@@ -93,6 +101,58 @@ function CareOperationsPage({
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentSlot, setAppointmentSlot] = useState("10:30 AM");
+  const apiSearch = `${globalSearch} ${query}`.trim();
+  const patientPage = patientPageState.search === apiSearch ? patientPageState.page : 1;
+
+  useEffect(() => {
+    if (!isPatient) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setApiPatientState("loading");
+      setApiPatientError("");
+      const params = new URLSearchParams({ page: String(patientPage), limit: "50" });
+      if (apiSearch) params.set("search", apiSearch);
+      try {
+        const response = await fetch(`/api/admin/users?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || "Patient profiles could not be loaded.");
+        const data = result.data && typeof result.data === "object" ? result.data : {};
+        const items = Array.isArray(data.items) ? data.items : [];
+        setApiPatients(items.map((user: Record<string, unknown>) => {
+          const name = String(user.name || "Unnamed patient");
+          const createdAt = user.created_at ? new Date(String(user.created_at)) : null;
+          return {
+            id: String(user.id ?? ""),
+            name,
+            initials: name.split(/\s+/).map((part) => part[0] || "").join("").slice(0, 2).toUpperCase(),
+            email: String(user.email || ""),
+            phone: String(user.phone || ""),
+            age: typeof user.age === "number" ? user.age : null,
+            gender: typeof user.gender === "string" ? user.gender : null,
+            city: typeof user.city === "string" ? user.city : null,
+            occupation: typeof user.occupation === "string" ? user.occupation : null,
+            photoUrl: typeof user.profile_url === "string" ? user.profile_url : null,
+            assessment: "No assessment submitted",
+            submitted: createdAt && !Number.isNaN(createdAt.valueOf()) ? createdAt.toLocaleDateString("en-IN") : "—",
+            status: "Active" as const,
+          };
+        }));
+        setApiPatientTotal(typeof data.total === "number" ? data.total : items.length);
+        setApiPatientState("ready");
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setApiPatientError(error instanceof Error ? error.message : "Patient profiles could not be loaded.");
+        setApiPatientState("error");
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [apiSearch, isPatient, patientPage, reloadPatients]);
 
   const addClinicHoliday = () => {
     if (!newHolidayDate) {
@@ -127,7 +187,6 @@ function CareOperationsPage({
     onToast(`Patient OPD status updated: ${nextOpdStatus}`);
   };
 
-  const isPatient = kind === "patients";
   const canViewClinicalPatients = permissions.some((permission) => ["patients.view", "assessments.review", "progress.review", "care-plans.edit"].includes(permission));
   const config = isPatient
     ? {
@@ -181,6 +240,21 @@ function CareOperationsPage({
   }, [bookings, search, statusFilter, visitTypeFilter]);
 
   const notificationKeys = notifications.map((n) => `${n.patientId}:${n.reportId}`);
+
+  if (isPatient) {
+    return <PatientDirectory
+      patients={apiPatients}
+      total={apiPatientTotal}
+      page={patientPage}
+      pageSize={50}
+      loading={apiPatientState === "loading"}
+      error={apiPatientState === "error" ? apiPatientError : ""}
+      query={query}
+      onQueryChange={setQuery}
+      onPageChange={(page) => setPatientPageState({ search: apiSearch, page })}
+      onRetry={() => setReloadPatients((value) => value + 1)}
+    />;
+  }
 
   const sendReportNotification = (patient: PatientRecord, report: PatientReport) => {
     if (!permissions.includes("reports.share")) {
@@ -1060,7 +1134,7 @@ function CareOperationsPage({
 
             {/* Clinical Space for In-Person Notes */}
             <div className="pt-2 border-t border-slate-200">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">DOCTOR'S CLINICAL FINDINGS & Rx</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">DOCTOR&apos;S CLINICAL FINDINGS &amp; Rx</span>
               <div className="min-h-[90px] border border-dashed border-slate-300 rounded-lg p-2.5 text-[11px] text-slate-400">
                 Trichoscopy follicular density, scalp condition, and prescribed protocol notes written by Dr. Jai Bansal.
               </div>
@@ -1070,6 +1144,67 @@ function CareOperationsPage({
       )}
     </main>
   );
+}
+
+function PatientDirectory({
+  patients,
+  total,
+  page,
+  pageSize,
+  loading,
+  error,
+  query,
+  onQueryChange,
+  onPageChange,
+  onRetry,
+}: {
+  patients: PatientRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  loading: boolean;
+  error: string;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onPageChange: (page: number) => void;
+  onRetry: () => void;
+}) {
+  return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+    <PageHeader
+      eyebrow="Patient Directory"
+      title="Registered users"
+      description="Patient account details loaded from the Dr. Hair API. Clinical assessments appear here after their API is connected."
+    />
+    <section className="card">
+      <div className="card-head"><div><h2 className="card-title">Patient profiles</h2><p className="card-note">Search is debounced and results are paginated by the backend.</p></div></div>
+      <TableToolbar value={query} onChange={onQueryChange} placeholder="Search by name, email, or phone..." />
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Patient</th><th>Email</th><th>Phone</th><th>Age & location</th><th>Registered</th><th>Photo</th></tr></thead>
+          <tbody>
+            {loading && patients.length === 0 && <tr><td colSpan={6}><div className="empty-state">Loading patient profiles…</div></td></tr>}
+            {!loading && !error && patients.map((patient) => <tr key={patient.id}>
+              <td><div className="person"><Avatar initials={patient.initials} /><div><div className="person-name">{patient.name}</div><div className="person-sub">ID {patient.id}</div></div></div></td>
+              <td>{patient.email || "—"}</td>
+              <td>{patient.phone || "—"}</td>
+              <td>{patient.age ?? "—"}{patient.city ? ` · ${patient.city}` : ""}</td>
+              <td>{patient.submitted}</td>
+              <td>{patient.photoUrl ? <a className="text-teal-700 underline" href={patient.photoUrl} target="_blank" rel="noreferrer">Open photo</a> : "—"}</td>
+            </tr>)}
+            {!loading && !error && patients.length === 0 && <tr><td colSpan={6}><div className="empty-state">No patient profiles match this search.</div></td></tr>}
+            {error && <tr><td colSpan={6}><div className="empty-state"><p role="alert">{error}</p><button className="button button-secondary button-small mt-3" onClick={onRetry}>Try again</button></div></td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div className="table-footer flex items-center justify-between p-3 border-t border-slate-200 text-xs text-slate-500">
+        <span>{loading ? "Refreshing…" : `Showing ${patients.length} of ${total} patient profiles · Page ${page} of ${Math.max(1, Math.ceil(total / pageSize))}`}</span>
+        <div className="flex gap-2">
+          <button className="button button-secondary button-small" disabled={loading || page <= 1} onClick={() => onPageChange(page - 1)}>Previous</button>
+          <button className="button button-secondary button-small" disabled={loading || page >= Math.ceil(total / pageSize)} onClick={() => onPageChange(page + 1)}>Next</button>
+        </div>
+      </div>
+    </section>
+  </main>;
 }
 
 function PatientSummary({ patients, profiles, clinicalAccess }: { patients: PatientRecord[]; profiles: Record<string, typeof patientClinicalProfiles[string]>; clinicalAccess: boolean }) {

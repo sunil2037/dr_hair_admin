@@ -9,10 +9,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The sign-in screen is a UI preview only. The email selects a seeded demo role; any password is accepted for these UI-only accounts:
-
-- Admin: `nandini.rao@drhair.health`
-- Super Admin (Dr. Jai Bansal): `jai.bansal@drhair.health`
+Open `http://localhost:3000`. Admin sign-in uses the backend email OTP flow. Set `DRHAIR_BACKEND_URL` in the shell or local environment to the Express API origin (defaults to `http://localhost:5001`). The backend must include the admin email in its private `ADMIN_EMAILS` setting; development OTP behavior is controlled by the backend's `DEFAULT_TEST_OTP`.
 
 ## Structure
 
@@ -33,7 +30,7 @@ src/
       types/                   # Shared role, record, and feature types
 ```
 
-Feature screens stay grouped by domain. Shared UI and role/access rules live in `shared/`; sample records live behind `demo-data.ts`. This keeps screens independent and gives future API integration clear places to add feature-specific data access without introducing backend code into the UI.
+Feature screens stay grouped by domain. Shared UI and role/access rules live in `shared/`; sample records live behind `demo-data.ts`. Server Route Handlers proxy authenticated requests so JWTs remain in an HttpOnly cookie. Registered patient profiles load from the paginated backend API; clinical assessments and other operations still use sample records until their APIs are connected.
 
 ## Demo behavior
 
@@ -42,7 +39,8 @@ Feature screens stay grouped by domain. Shared UI and role/access rules live in 
 - App feature controls update local demo state. Admin Panel module controls also update which workspace sections appear in the Admin preview.
 - Clinic appointments are browser previews from staff and sample app sources. The Flutter app has a separate local physical visit request flow for Dr. Jai Bansal; requests do not sync yet.
 - Content/product forms, search, status filters, and record detail dialogs use local sample data.
-- No authentication, API calls, or database writes are connected. Feature changes do not affect the Flutter app yet.
+- The current backend admin role has no granular server-side permissions, so the connected panel exposes the patient directory as read-only. Other operational screens remain UI previews and do not persist to the backend.
+- Admin media uploads can use `/api/admin/media/upload`; the route streams multipart data to the shared Cloudinary upload endpoint without exposing the admin session token to browser JavaScript. Save a returned video URL as a draft through `/api/admin/media/videos`.
 
 ## Brand
 

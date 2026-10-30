@@ -1191,7 +1191,7 @@ function ReportsPanel({
         <div className="flex items-center gap-2">
           <ShieldCheck size={16} className="text-[#0D9488] shrink-0" />
           <span>
-            <strong>Clinical Reports & Lab Vault</strong> — Reports uploaded by Super Admin (Dr. Jai Bansal) or Clinical Desk. Shared reports sync directly into the patient's mobile app.
+            <strong>Clinical Reports & Lab Vault</strong> — Reports uploaded by Super Admin (Dr. Jai Bansal) or Clinical Desk. Shared reports sync directly into the patient&apos;s mobile app.
           </span>
         </div>
       </div>

@@ -1,255 +1,161 @@
 "use client";
 
-import { ArrowRight, Check, CheckCircle2, LockKeyhole, Mail, ShieldCheck, Sparkles, Stethoscope, UserCheck } from "lucide-react";
-import { useState } from "react";
-import type { Role } from "../types";
+import { ArrowRight, ChevronLeft, Mail, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { BrandLogo } from "./brand-logo";
 
-const demoAccounts: {
-  role: Role;
-  name: string;
-  roleTitle: string;
+export type AdminIdentity = {
   email: string;
-  badge: string;
-  badgeColor: string;
-  icon: typeof Stethoscope;
-}[] = [
-  {
-    role: "super-admin",
-    name: "Dr. Jai Bansal",
-    roleTitle: "Clinic Owner & Chief Surgeon",
-    email: "jai.bansal@drhair.health",
-    badge: "Super Admin",
-    badgeColor: "bg-[#1A365D] text-white",
-    icon: Stethoscope,
-  },
-  {
-    role: "admin",
-    name: "Nandini Rao",
-    roleTitle: "Clinical Operations & Prescriptions",
-    email: "nandini.rao@drhair.health",
-    badge: "Clinical Admin",
-    badgeColor: "bg-teal-700 text-white",
-    icon: UserCheck,
-  },
-  {
-    role: "admin",
-    name: "Vikram Sethi",
-    roleTitle: "OPD Queue & Appointments Desk",
-    email: "vikram.sethi@drhair.health",
-    badge: "Operations Admin",
-    badgeColor: "bg-slate-700 text-white",
-    icon: UserCheck,
-  },
-  {
-    role: "admin",
-    name: "Aisha Khan",
-    roleTitle: "App Media & Content Management",
-    email: "aisha.khan@drhair.health",
-    badge: "Content Admin",
-    badgeColor: "bg-indigo-700 text-white",
-    icon: UserCheck,
-  },
-];
+  name?: string | null;
+  role: "admin";
+};
 
-export function SignIn({ onSignIn }: { onSignIn: (role: Role, email: string) => void }) {
-  const [email, setEmail] = useState("jai.bansal@drhair.health");
-  const [password, setPassword] = useState("demopassword");
-  const [resetNotice, setResetNotice] = useState(false);
+export function SignIn({
+  onAuthenticated,
+}: {
+  onAuthenticated: (admin: AdminIdentity) => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<"email" | "otp">("email");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [resendCountdown, setResendCountdown] = useState(0);
 
-  const handleQuickLogin = (role: Role, accountEmail: string) => {
-    setEmail(accountEmail);
-    onSignIn(role, accountEmail);
-  };
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const timer = window.setTimeout(() => setResendCountdown((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCountdown]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const loginId = email.trim().toLowerCase();
-
-    // Specific match
-    const foundDemo = demoAccounts.find((item) => item.email.toLowerCase() === loginId);
-    if (foundDemo) {
-      onSignIn(foundDemo.role, foundDemo.email);
+  async function requestCode() {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError("Enter a valid work email address.");
       return;
     }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || "Could not send a verification code.");
+      setEmail(normalizedEmail);
+      setOtp("");
+      setNotice(result.message || `Verification code sent to ${normalizedEmail}.`);
+      setResendCountdown(30);
+      setStep("otp");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not send a verification code.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    // Smart flexible detection so user is never blocked:
-    const isSuper =
-      loginId.includes("jai") ||
-      loginId.includes("bansal") ||
-      loginId.includes("super") ||
-      loginId.includes("owner") ||
-      loginId.includes("chief") ||
-      loginId.includes("doctor") ||
-      loginId.includes("dr") ||
-      loginId === "admin" ||
-      loginId === "admin@drhair.health" ||
-      loginId === "admin@drhair.com";
-
-    const resolvedRole: Role = isSuper ? "super-admin" : "admin";
-    const resolvedEmail = loginId.includes("@") ? loginId : `${loginId}@drhair.health`;
-
-    onSignIn(resolvedRole, resolvedEmail);
-  };
+  async function verifyCode(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!/^\d{6}$/.test(otp)) {
+      setError("Enter the six-digit verification code.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), otp }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.authenticated !== true || !result.admin) {
+        throw new Error(result.message || "The code could not be verified.");
+      }
+      onAuthenticated(result.admin as AdminIdentity);
+    } catch (verifyError) {
+      setError(verifyError instanceof Error ? verifyError.message : "The code could not be verified.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <main className="signin-page min-h-screen lg:grid lg:grid-cols-2">
-      {/* Left Visual Branding Side */}
       <section className="signin-visual hidden lg:flex">
-        <div className="brand signin-brand">
-          <BrandLogo width={158} priority />
-        </div>
+        <div className="brand signin-brand"><BrandLogo width={158} priority /></div>
         <div className="signin-message">
-          <span className="signin-tag">
-            <span className="signin-dot" />
-            Clinical care, thoughtfully managed
-          </span>
+          <span className="signin-tag"><span className="signin-dot" />Clinical care, thoughtfully managed</span>
           <h1>Better care starts with a clearer view.</h1>
-          <p>A calm, connected workspace for Dr. Jai Bansal and the clinic team caring for every hair health journey.</p>
+          <p>A private workspace for the Dr. Hair clinic team to support every patient journey.</p>
           <div className="signin-illustration">
             <div className="orbit orbit-one" />
             <div className="orbit orbit-two" />
-            <div className="care-symbol">
-              <Sparkles size={27} />
-            </div>
+            <div className="care-symbol"><ShieldCheck size={27} /></div>
             <div className="float-card float-card-one">
-              <span className="float-icon">
-                <Check size={15} />
-              </span>
-              <span>
-                <strong>OPD Token Issued</strong>
-                <small>Room 101 · Dr. Jai Bansal</small>
-              </span>
-            </div>
-            <div className="float-card float-card-two">
-              <span className="float-mini-avatar">JB</span>
-              <span>
-                <strong>Super Admin Active</strong>
-                <small>Full Clinical Control</small>
-              </span>
+              <span className="float-icon"><ShieldCheck size={15} /></span>
+              <span><strong>Verified team access</strong><small>One-time code sign-in</small></span>
             </div>
           </div>
         </div>
-        <div className="signin-foot">
-          <span>Dr. Hair Clinical Admin Panel</span>
-          <span>Version 2.0.0</span>
-        </div>
+        <div className="signin-foot"><span>Dr. Hair Clinical Admin Panel</span><span>Version 2.0.0</span></div>
       </section>
 
-      {/* Right Login Form Side */}
       <section className="signin-side">
         <div className="signin-form-wrap max-w-[420px] w-full">
-          <div className="signin-mobile-brand">
-            <BrandLogo width={142} priority />
-          </div>
+          <div className="signin-mobile-brand"><BrandLogo width={142} priority /></div>
           <div className="signin-kicker">TEAM WORKSPACE</div>
-          <h2>Welcome back</h2>
-          <p className="signin-subtitle">Sign in to continue to your Dr. Hair admin workspace.</p>
+          <h2>{step === "email" ? "Welcome back" : "Verify your email"}</h2>
+          <p className="signin-subtitle">
+            {step === "email"
+              ? "Sign in with an email address approved by your clinic owner."
+              : `Enter the six-digit code sent to ${email}.`}
+          </p>
 
-          {/* Quick One-Click Login Pills */}
-          <div className="mb-5 space-y-2">
-            <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase block">
-              ⚡ One-Click Quick Login:
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {demoAccounts.map((acc) => (
-                <button
-                  key={acc.email}
-                  type="button"
-                  onClick={() => handleQuickLogin(acc.role, acc.email)}
-                  className={`p-2.5 rounded-xl border text-left transition-all hover:scale-[1.02] flex items-center justify-between ${
-                    email === acc.email
-                      ? "border-[#1A365D] bg-[#F0F7FF] shadow-sm"
-                      : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-                >
-                  <div className="min-w-0 pr-1">
-                    <div className="flex items-center gap-1.5">
-                      <strong className="text-xs text-slate-800 truncate block">{acc.name}</strong>
-                    </div>
-                    <span className="text-[10px] text-slate-500 truncate block">{acc.roleTitle}</span>
-                  </div>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${acc.badgeColor}`}>
-                    {acc.badge}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-3.5">
-            <label className="signin-field">
-              <span>Work email</span>
-              <div>
-                <Mail size={15} />
-                <input
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  type="text"
-                  placeholder="e.g. jai.bansal@drhair.health"
-                  required
-                />
-              </div>
-            </label>
-
-            <label className="signin-field">
-              <span>Password</span>
-              <div>
-                <LockKeyhole size={15} />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Any password"
-                  required
-                />
-                <button
-                  type="button"
-                  className="show-password text-[11px] text-slate-500 hover:text-slate-800"
-                  onClick={(event) => {
-                    const input = event.currentTarget.parentElement?.querySelector("input");
-                    if (input) input.type = input.type === "password" ? "text" : "password";
-                  }}
-                >
-                  Show
-                </button>
-              </div>
-            </label>
-
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-emerald-700 flex items-center gap-1">
-                <CheckCircle2 size={13} />
-                Any password accepted in demo mode
-              </span>
-              <button
-                type="button"
-                className="forgot-link text-[11px] text-teal-700 hover:underline"
-                onClick={() => setResetNotice((visible) => !visible)}
-              >
-                Forgot?
-              </button>
-            </div>
-
-            {resetNotice && (
-              <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs">
-                To reset password or manage clinic credentials, contact Super Admin Dr. Jai Bansal.
-              </div>
+          <form onSubmit={step === "email" ? (event) => { event.preventDefault(); void requestCode(); } : verifyCode} className="space-y-3.5">
+            {step === "email" ? (
+              <label className="signin-field">
+                <span>Work email</span>
+                <div><Mail size={15} /><input autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="name@clinic.com" required /></div>
+              </label>
+            ) : (
+              <>
+                <label className="signin-field">
+                  <span>Six-digit verification code</span>
+                  <div><ShieldCheck size={15} /><input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="••••••" required /></div>
+                </label>
+                {notice && <p className="text-xs text-slate-600" role="status">{notice}</p>}
+              </>
             )}
 
-            <button type="submit" className="button button-primary signin-submit flex items-center justify-center gap-2">
-              Continue to workspace <ArrowRight size={15} />
+            {error && <p className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-800" role="alert">{error}</p>}
+
+            <button disabled={busy} type="submit" className="button button-primary signin-submit flex items-center justify-center gap-2 disabled:opacity-60">
+              {busy ? "Please wait…" : step === "email" ? "Send verification code" : "Verify and continue"}
+              {!busy && <ArrowRight size={15} />}
             </button>
           </form>
 
-          <div className="signin-secure mt-4">
-            <ShieldCheck size={14} />
-            <span>Secure team access · Dr. Hair Restoration Center</span>
-          </div>
-        </div>
+          {step === "otp" && (
+            <div className="mt-3 flex items-center justify-between text-xs">
+              <button type="button" className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900" onClick={() => { setStep("email"); setError(""); setNotice(""); }}>
+                <ChevronLeft size={14} /> Change email
+              </button>
+              <button type="button" disabled={busy || resendCountdown > 0} className="text-teal-700 disabled:text-slate-400" onClick={() => void requestCode()}>
+                {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend code"}
+              </button>
+            </div>
+          )}
 
-        <div className="signin-legal mt-4">
-          © 2026 Dr. Hair <span>•</span> Terms <span>•</span> Privacy
+          <div className="signin-secure mt-4"><ShieldCheck size={14} /><span>Only allowlisted admin email addresses can sign in.</span></div>
         </div>
+        <div className="signin-legal mt-4">© 2026 Dr. Hair <span>•</span> Terms <span>•</span> Privacy</div>
       </section>
     </main>
   );

@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy": "./deploy.sh",
+    "deploy:prod": "next build && npx vercel --prod --yes",
+    "deploy:quick": "npx vercel --prod --yes"
   },
   "dependencies": {
     "lucide-react": "^1.63.0",

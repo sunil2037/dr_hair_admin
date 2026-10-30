@@ -13,6 +13,10 @@ export interface VideoContentItem {
   creatorName: string;
   thumbnail: string;
   videoUrl?: string;
+  provider?: "cloudinary" | "youtube";
+  publicId?: string;
+  placement?: "home" | "reels" | "both";
+  apiManaged?: boolean;
   caption: string;
   treatmentTag: string;
   status: Status;

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const ADMIN_SESSION_COOKIE = "drhair_admin_session";
 
 export function backendUrl(path: string) {
-  const origin = (process.env.DRHAIR_BACKEND_URL || "http://localhost:5001").replace(/\/+$/, "");
+  const origin = (process.env.DRHAIR_BACKEND_URL || "https://backend-ten-kappa-69.vercel.app").replace(/\/+$/, "");
   return `${origin}${path}`;
 }
 

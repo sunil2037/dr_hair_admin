@@ -34,7 +34,7 @@ export function AppManagement({
   panelAccess: PanelFeatureAccess;
   onPanelAccessChange: (id: string, enabled: boolean) => void;
 }) {
-  const canManageContent = permissions.some((permission) => ["content.edit", "media.upload", "content.publish"].includes(permission));
+  const canManageContent = role === "super-admin" || permissions.some((permission) => ["content.edit", "media.upload", "content.publish"].includes(permission));
   const canManageNotifications = permissions.includes("notifications.manage");
   const appFeatures = useMemo(() => features.filter((feature) => feature.id !== "booking"), [features]);
   const availableTabs = useMemo(() => tabMeta.filter(({ id }) => {
@@ -49,7 +49,7 @@ export function AppManagement({
   const selectedMeta = tabMeta.find((tab) => tab.id === resolvedTab);
   return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
     <PageHeader eyebrow="Dr. Hair · App experience" title="App Management" description="Manage what patients see, receive, and need to access the Dr. Hair app." />
-    <div className="notice mb-4"><LayoutGrid size={14} /><span>App-facing changes are saved as local previews in this demo. Publishing, notifications, remote feature configuration, and update checks will work after the APIs are connected.</span></div>
+    <div className="notice mb-4"><LayoutGrid size={14} /><span>Video uploads, YouTube links, and video publishing are connected to the backend. Banners, patient stories, notifications, feature settings, and app update policies still use local previews until their APIs are connected.</span></div>
     <div className="commerce-tabs app-management-tabs" role="tablist" aria-label="App management sections">
       {availableTabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={resolvedTab === id} className={`commerce-tab ${resolvedTab === id ? "selected" : ""}`} onClick={() => setActiveTab(id)}><Icon size={15} />{label}</button>)}
     </div>

@@ -15,15 +15,24 @@ import type { AdminRecord, AdminPermissionId, AuditEventRecord, FeatureRecord, P
 import { AdminShell } from "./admin-shell";
 import { SignIn, type AdminIdentity } from "./sign-in";
 import { Toast } from "./ui";
+import { PatientDetailPage } from "../../operations/components/patient-detail-page";
+import { useRouter } from "next/navigation";
 
 const initialAuditEvents = initialAudit.map((event) => ({ ...event, type: event.type as AuditEventRecord["type"] }));
 
-export function AdminApplication() {
+const superAdminPermissions: AdminPermissionId[] = [
+  "patients.view", "assessments.review", "care-plans.edit", "progress.review", "documents.view", "documents.upload", "documents.share", "patients.export", "patients.lookup",
+  "hair-tests.view", "hair-tests.upload", "hair-tests.submit", "reports.approve", "reports.share", "content.edit", "media.upload", "content.publish", "notifications.manage",
+  "products.manage", "orders.manage", "promotions.manage", "commerce.export", "bookings.manage",
+];
+
+export function AdminApplication({ initialPage = "overview", initialPatientId = null }: { initialPage?: PageKey; initialPatientId?: string | null }) {
+  const router = useRouter();
   const [auth, setAuth] = useState<{ status: "checking" | "signed-out" | "signed-in"; admin?: AdminIdentity }>({ status: "checking" });
   const [actorEmail, setActorEmail] = useState("");
   const role: Role = auth.admin?.role === "super_admin" ? "super-admin" : "admin";
   const previewAdminId = "";
-  const [page, setPage] = useState<PageKey>("overview");
+  const [page, setPage] = useState<PageKey>(initialPage);
   const [globalSearch, setGlobalSearch] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [toast, setToast] = useState("");
@@ -35,7 +44,7 @@ export function AdminApplication() {
   const closeToast = useCallback(() => setToast(""), []);
   const onMobileOpenChange = useCallback((open: boolean) => setMobileOpen(open), []);
   const isOwner = false;
-  const permissions = useMemo<AdminPermissionId[]>(() => ["patients.view"], []);
+  const permissions = useMemo<AdminPermissionId[]>(() => role === "super-admin" ? superAdminPermissions : ["patients.view"], [role]);
   const visibleName = auth.admin?.name || actorEmail || "Admin";
   const actorName = visibleName;
 
@@ -74,7 +83,9 @@ export function AdminApplication() {
     }
     setPage(nextPage);
     setGlobalSearch("");
-  }, [panelAccess, permissions, role, showToast]);
+    if (nextPage === "patients") router.push("/patients");
+    else if (initialPatientId || window.location.pathname.startsWith("/patients")) router.push(`/?panel=${encodeURIComponent(nextPage)}`);
+  }, [initialPatientId, panelAccess, permissions, role, router, showToast]);
 
   const changePanelAccess = useCallback((id: string, enabled: boolean) => {
     setPanelAccess((current) => ({ ...current, [id]: enabled }));
@@ -83,7 +94,9 @@ export function AdminApplication() {
   const content = useMemo(() => {
     switch (page) {
       case "overview": return <Dashboard role={role} userName={visibleName} onNavigate={navigate} permissions={permissions} events={events} admins={adminRecords} />;
-      case "patients": return <OperationsPage kind="patients" globalSearch={globalSearch} onToast={showToast} permissions={permissions} onAudit={recordAudit} />;
+      case "patients": return initialPatientId
+        ? <PatientDetailPage key={initialPatientId} patientId={initialPatientId} role={role} onToast={showToast} onAudit={recordAudit} />
+        : <OperationsPage kind="patients" globalSearch={globalSearch} onToast={showToast} permissions={permissions} onAudit={recordAudit} />;
       case "catalog": return <ProductManagement onToast={showToast} permissions={permissions} panelAccess={panelAccess} globalSearch={globalSearch} onAudit={recordAudit} />;
       case "content": return <AppManagement role={role} onToast={showToast} permissions={permissions} onAudit={recordAudit} features={features} onFeaturesChange={setFeatures} panelAccess={panelAccess} onPanelAccessChange={changePanelAccess} />;
       case "orders": return <OperationsPage kind="orders" globalSearch={globalSearch} onToast={showToast} permissions={permissions} onAudit={recordAudit} />;
@@ -92,14 +105,14 @@ export function AdminApplication() {
       case "team": return role === "super-admin" ? <AdminAccountManagement /> : <Denied />;
       case "activity": return role === "super-admin" ? <AuditLog globalSearch={globalSearch} onToast={showToast} events={events} /> : <Denied />;
     }
-  }, [actorName, adminRecords, changePanelAccess, events, features, globalSearch, navigate, page, panelAccess, permissions, recordAudit, role, setFeatures, showToast, visibleName]);
+  }, [actorName, adminRecords, changePanelAccess, events, features, globalSearch, initialPatientId, navigate, page, panelAccess, permissions, recordAudit, role, setFeatures, showToast, visibleName]);
 
   if (auth.status === "checking") return <main className="signin-page grid min-h-screen place-items-center"><p className="text-sm text-slate-600">Checking secure admin session…</p></main>;
 
   if (auth.status !== "signed-in") return <SignIn onAuthenticated={(admin) => {
     setActorEmail(admin.email);
     setAuth({ status: "signed-in", admin });
-    setPage("overview");
+    setPage(initialPatientId ? "patients" : initialPage);
     showToast(`Welcome, ${admin.name || admin.email}.`);
   }} />;
 

@@ -101,10 +101,10 @@ export function AdminAccountManagement() {
         <div className="section-row">
           <div><h2 className="card-title">Create an admin login</h2><p className="card-note">The work email is the login ID; a secure temporary password is generated automatically.</p></div>
         </div>
-        <form onSubmit={createAccount} className="access-identity-grid">
+        <form onSubmit={createAccount} className="access-identity-grid grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <div className="field"><label htmlFor="admin-account-name">Full name</label><input id="admin-account-name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Aisha Khan" required maxLength={100} /></div>
           <div className="field"><label htmlFor="admin-account-email">Work email / login ID</label><input id="admin-account-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@clinic.com" required /></div>
-          <div style={{ display: "flex", alignItems: "end" }}><button className="button button-primary" type="submit" disabled={busy}><Plus size={15} />{busy ? "Creating…" : "Generate admin login"}</button></div>
+          <div className="flex min-w-0 items-end"><button className="button button-primary w-full sm:w-auto lg:w-full" type="submit" disabled={busy}><Plus size={15} />{busy ? "Creating…" : "Generate admin login"}</button></div>
         </form>
 
         {error && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>}

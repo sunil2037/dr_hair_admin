@@ -15,7 +15,7 @@ import {
   FileUp,
   HeartPulse,
   History,
-  Image,
+  Image as ImageIcon,
   Maximize2,
   MessageCircle,
   Phone,
@@ -1206,7 +1206,7 @@ function ReportsPanel({
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-start gap-2.5">
                 <span className="p-2 rounded-lg bg-slate-100 text-slate-700 mt-0.5">
-                  {format === "IMAGE" ? <Image size={16} className="text-teal-600" /> : format === "DOC" ? <FileSpreadsheet size={16} className="text-blue-600" /> : <FileText size={16} className="text-rose-600" />}
+                  {format === "IMAGE" ? <ImageIcon size={16} aria-hidden="true" className="text-teal-600" /> : format === "DOC" ? <FileSpreadsheet size={16} aria-hidden="true" className="text-blue-600" /> : <FileText size={16} aria-hidden="true" className="text-rose-600" />}
                 </span>
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -1361,7 +1361,6 @@ function DocumentsPanel({
 
       <div className="patient-document-list space-y-2">
         {documents.map((document) => {
-          const isPdf = document.fileName.toLowerCase().endsWith(".pdf") || document.fileType.includes("pdf");
           const isDoc = document.fileName.toLowerCase().endsWith(".doc") || document.fileName.toLowerCase().endsWith(".docx");
           const isImg = document.fileType.includes("image") || Boolean(document.fileName.match(/\.(png|jpg|jpeg)$/i));
 
@@ -1369,7 +1368,7 @@ function DocumentsPanel({
             <article className="patient-document-row flex flex-wrap items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm" key={document.id}>
               <div className="flex items-center gap-2.5">
                 <span className="p-2 rounded-lg bg-slate-100">
-                  {isImg ? <Image size={16} className="text-teal-600" /> : isDoc ? <FileSpreadsheet size={16} className="text-blue-600" /> : <FileText size={16} className="text-rose-600" />}
+                  {isImg ? <ImageIcon size={16} aria-hidden="true" className="text-teal-600" /> : isDoc ? <FileSpreadsheet size={16} aria-hidden="true" className="text-blue-600" /> : <FileText size={16} aria-hidden="true" className="text-rose-600" />}
                 </span>
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">

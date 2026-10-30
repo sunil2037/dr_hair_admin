@@ -62,9 +62,9 @@ export function AdminShell({
   }, [onMobileOpenChange]);
 
   return (
-    <div className="admin-shell">
+    <div className="admin-shell min-h-screen w-full overflow-x-clip">
       <button className={`mobile-scrim ${mobileOpen ? "show" : ""}`} aria-label="Close menu" onClick={() => onMobileOpenChange(false)} />
-      <aside id="admin-navigation" className={`sidebar fixed inset-y-0 left-0 z-30 flex flex-col transition-transform duration-200 ease-out ${mobileOpen ? "open" : ""}`} aria-label="Main navigation">
+      <aside id="admin-navigation" className={`sidebar fixed inset-y-0 left-0 z-30 flex w-[min(286px,84vw)] flex-col transition-transform duration-200 ease-out min-[901px]:w-[226px] min-[1101px]:w-[252px] ${mobileOpen ? "open" : ""}`} aria-label="Main navigation">
         <div className="brand">
           <BrandLogo priority />
         </div>
@@ -97,13 +97,13 @@ export function AdminShell({
           </div>
         </div>
       </aside>
-      <div className="main-column min-h-screen">
-        <header className="topbar">
-          <div className="topbar-left">
+      <div className="main-column min-h-screen min-w-0 min-[901px]:ml-[226px] min-[1101px]:ml-[252px]">
+        <header className="topbar min-w-0">
+          <div className="topbar-left min-w-0">
             <button className="icon-button mobile-menu" aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"} aria-expanded={mobileOpen} aria-controls="admin-navigation" onClick={() => onMobileOpenChange(!mobileOpen)}><Menu size={17} /></button>
             <div className="breadcrumbs"><span>Dr. Hair</span><ChevronRight size={13} /><strong>{pageLabels[page]}</strong></div>
           </div>
-          <div className="topbar-actions">
+          <div className="topbar-actions min-w-0">
             <label className="search-box"><Search size={15} /><input aria-label="Search the admin panel" value={globalSearch} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search anything..." /></label>
             <button className="icon-button hidden sm:grid" aria-label="Notifications" onClick={() => onToast("You’re all caught up.")}><Bell size={16} /><span className="notification-dot" /></button>
             {isOwner ? <>

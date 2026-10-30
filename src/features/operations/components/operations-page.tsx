@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   AlertTriangle,
@@ -30,9 +31,8 @@ import { bookings as initialBookings, patients as initialPatients } from "../../
 import type { BookingRecord, PatientRecord } from "../../shared/types";
 import type { AdminPermissionId } from "../../shared/types";
 import { patientClinicalProfiles } from "../lib/patient-profiles";
-import { createFallbackProfile, PatientProfileDialog } from "./patient-profile-dialog";
+import { createFallbackProfile } from "./patient-profile-dialog";
 import { OrdersPage } from "./orders-page";
-import type { PatientReport, PatientReportNotification } from "../types";
 
 type CareOperationsKind = "patients" | "bookings";
 type TriageFilter = "all" | "needs-regimen" | "pending-checkins" | "active-regimen";
@@ -67,6 +67,7 @@ function CareOperationsPage({
   permissions: AdminPermissionId[];
   onAudit: (action: string, target: string) => void;
 }) {
+  const router = useRouter();
   const [demoPatients] = useSessionState<PatientRecord[]>("drhair-demo-patients", initialPatients);
   const isPatient = kind === "patients";
   const [apiPatients, setApiPatients] = useState<PatientRecord[]>([]);
@@ -77,8 +78,7 @@ function CareOperationsPage({
   const [reloadPatients, setReloadPatients] = useState(0);
   const patients = isPatient ? apiPatients : demoPatients;
   const [bookings, setBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
-  const [notifications, setNotifications] = useSessionState<PatientReportNotification[]>("drhair-demo-patient-notifications", []);
-  const [profiles, setProfiles] = useSessionState("drhair-demo-patient-profiles", patientClinicalProfiles);
+  const [profiles] = useSessionState("drhair-demo-patient-profiles", patientClinicalProfiles);
   const [query, setQuery] = useState("");
   const [triageFilter, setTriageFilter] = useState<TriageFilter>("all");
   const [dialog, setDialog] = useState<BookingRecord | null>(null);
@@ -87,9 +87,8 @@ function CareOperationsPage({
   const [appointmentPatientId, setAppointmentPatientId] = useState("");
   const [appointmentService, setAppointmentService] = useState("Clinic consultation");
   const [appointmentSource, setAppointmentSource] = useState<NonNullable<BookingRecord["source"]>>("Phone");
-  const [selectedPatient, setSelectedPatient] = useState<PatientRecord | null>(null);
   const [statusFilter, setStatusFilter] = useState("All status");
-  const [visitTypeFilter, setVisitTypeFilter] = useState<"All" | "Physical" | "Phone">("All");
+  const [visitTypeFilter] = useState<"All" | "Physical" | "Phone">("All");
   const [printingSlipBooking, setPrintingSlipBooking] = useState<BookingRecord | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [clinicHolidays, setClinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", [
@@ -239,8 +238,6 @@ function CareOperationsPage({
     );
   }, [bookings, search, statusFilter, visitTypeFilter]);
 
-  const notificationKeys = notifications.map((n) => `${n.patientId}:${n.reportId}`);
-
   if (isPatient) {
     return <PatientDirectory
       patients={apiPatients}
@@ -253,50 +250,9 @@ function CareOperationsPage({
       onQueryChange={setQuery}
       onPageChange={(page) => setPatientPageState({ search: apiSearch, page })}
       onRetry={() => setReloadPatients((value) => value + 1)}
+      onOpenPatient={(id) => router.push(`/patients/${encodeURIComponent(id)}`)}
     />;
   }
-
-  const sendReportNotification = (patient: PatientRecord, report: PatientReport) => {
-    if (!permissions.includes("reports.share")) {
-      onToast("Doctor permission is required to share a report.");
-      return;
-    }
-    const key = `${patient.id}:${report.id}`;
-    if (notificationKeys.includes(key)) {
-      onToast("This report notification has already been queued.");
-      return;
-    }
-    setNotifications((current) => [
-      {
-        id: `NTF-${Date.now()}`,
-        patientId: patient.id,
-        reportId: report.id,
-        title: "Your hair health report is ready",
-        body: `${report.title} is available in your Dr. Hair profile.`,
-        createdAt: new Date().toISOString(),
-        queuedAt: "Just now",
-      },
-      ...current,
-    ]);
-    onAudit("queued patient report notice for", `${patient.id} · ${report.title}`);
-    onToast(`Report notice queued locally for ${patient.name}. No app notification was sent.`);
-  };
-
-  const queueDocumentNotice = (patient: PatientRecord, document: { id: string; fileName: string }) => {
-    if (!permissions.includes("documents.share")) return;
-    const key = `${patient.id}:${document.id}`;
-    if (notificationKeys.includes(key)) return;
-    setNotifications((current) => [{
-      id: `NTF-${Date.now()}`,
-      patientId: patient.id,
-      reportId: document.id,
-      title: "A document was added to your patient record",
-      body: `${document.fileName} is available in your Dr. Hair profile.`,
-      createdAt: new Date().toISOString(),
-      queuedAt: "Just now",
-    }, ...current]);
-    onToast(`Document notice queued locally for ${patient.name}. No app notification was sent.`);
-  };
 
   const updateBookingStatus = (status: "Completed" | "Active" | "Cancelled" | "No show") => {
     if (!dialog) return;
@@ -322,7 +278,7 @@ function CareOperationsPage({
       return;
     }
     setDialog(null);
-    setSelectedPatient(matched);
+    router.push(`/patients/${encodeURIComponent(matched.id)}`);
   };
 
   const createAppointment = () => {
@@ -561,7 +517,7 @@ function CareOperationsPage({
                     <tr
                       key={patient.id}
                       className="hover:bg-slate-50/80 cursor-pointer"
-                      onClick={() => setSelectedPatient(patient)}
+                      onClick={() => router.push(`/patients/${encodeURIComponent(patient.id)}`)}
                     >
                       <td>
                         <div className="person">
@@ -627,7 +583,7 @@ function CareOperationsPage({
                           aria-label={`Open clinical record for ${patient.name}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedPatient(patient);
+                            router.push(`/patients/${encodeURIComponent(patient.id)}`);
                           }}
                         >
                           <ArrowRight size={15} />
@@ -655,7 +611,7 @@ function CareOperationsPage({
                 return <tr key={patient.id}>
                   <td><div className="person"><Avatar initials={patient.initials} /><div><div className="person-name">{patient.name}</div><div className="person-sub">{patient.id}</div></div></div></td>
                   <td>{documents.length} document{documents.length === 1 ? "" : "s"}</td>
-                  <td><button className="button button-secondary button-small" onClick={() => setSelectedPatient(patient)}>Open documents</button></td>
+                  <td><button className="button button-secondary button-small" onClick={() => router.push(`/patients/${encodeURIComponent(patient.id)}`)}>Open patient record</button></td>
                 </tr>;
               })}{filteredPatients.length === 0 && <tr><td colSpan={3}><div className="empty-state">No patient matches that name or ID.</div></td></tr>}</tbody>
             </table>
@@ -808,22 +764,6 @@ function CareOperationsPage({
           <span>Trichology EMR Portal</span>
         </div>
       </section>
-
-      {/* Patient Profile & Regimen Builder Dialog */}
-      {selectedPatient && (
-        <PatientProfileDialog
-          patient={selectedPatient}
-          notifications={notificationKeys}
-          profile={profiles[selectedPatient.id] ?? createFallbackProfile(selectedPatient)}
-          permissions={permissions}
-          onClose={() => setSelectedPatient(null)}
-          onSendReport={sendReportNotification}
-          onUpdateProfile={(patientId, updated) => setProfiles((current) => ({ ...current, [patientId]: updated }))}
-          onAudit={onAudit}
-          onQueueDocumentNotice={queueDocumentNotice}
-          onToast={onToast}
-        />
-      )}
 
       {/* Staff-managed clinic appointment */}
       {dialog && (
@@ -1157,6 +1097,7 @@ function PatientDirectory({
   onQueryChange,
   onPageChange,
   onRetry,
+  onOpenPatient,
 }: {
   patients: PatientRecord[];
   total: number;
@@ -1168,31 +1109,33 @@ function PatientDirectory({
   onQueryChange: (value: string) => void;
   onPageChange: (page: number) => void;
   onRetry: () => void;
+  onOpenPatient: (id: string) => void;
 }) {
   return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
     <PageHeader
       eyebrow="Patient Directory"
       title="Registered users"
-      description="Patient account details loaded from the Dr. Hair API. Clinical assessments appear here after their API is connected."
+      description="Browse patient profiles from the mobile app. Select a patient to open their full profile, submitted assessments, reports, and treatment suggestions."
     />
     <section className="card">
       <div className="card-head"><div><h2 className="card-title">Patient profiles</h2><p className="card-note">Search is debounced and results are paginated by the backend.</p></div></div>
       <TableToolbar value={query} onChange={onQueryChange} placeholder="Search by name, email, or phone..." />
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Patient</th><th>Email</th><th>Phone</th><th>Age & location</th><th>Registered</th><th>Photo</th></tr></thead>
+          <thead><tr><th>Patient</th><th>Email</th><th>Phone</th><th>Age & location</th><th>Registered</th><th>Photo</th><th /></tr></thead>
           <tbody>
-            {loading && patients.length === 0 && <tr><td colSpan={6}><div className="empty-state">Loading patient profiles…</div></td></tr>}
-            {!loading && !error && patients.map((patient) => <tr key={patient.id}>
+            {loading && patients.length === 0 && <tr><td colSpan={7}><div className="empty-state">Loading patient profiles…</div></td></tr>}
+            {!loading && !error && patients.map((patient) => <tr key={patient.id} className="cursor-pointer hover:bg-teal-50/50" onClick={() => onOpenPatient(patient.id)}>
               <td><div className="person"><Avatar initials={patient.initials} /><div><div className="person-name">{patient.name}</div><div className="person-sub">ID {patient.id}</div></div></div></td>
               <td>{patient.email || "—"}</td>
               <td>{patient.phone || "—"}</td>
-              <td>{patient.age ?? "—"}{patient.city ? ` · ${patient.city}` : ""}</td>
+              <td>{patient.age ?? "—"}{patient.gender ? ` · ${patient.gender}` : ""}{patient.city ? ` · ${patient.city}` : ""}</td>
               <td>{patient.submitted}</td>
-              <td>{patient.photoUrl ? <a className="text-teal-700 underline" href={patient.photoUrl} target="_blank" rel="noreferrer">Open photo</a> : "—"}</td>
+              <td>{patient.photoUrl?.startsWith("https://") ? <a className="text-teal-700 underline" href={patient.photoUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Open photo</a> : "—"}</td>
+              <td><button className="button button-secondary button-small" onClick={(event) => { event.stopPropagation(); onOpenPatient(patient.id); }}>Open record</button></td>
             </tr>)}
-            {!loading && !error && patients.length === 0 && <tr><td colSpan={6}><div className="empty-state">No patient profiles match this search.</div></td></tr>}
-            {error && <tr><td colSpan={6}><div className="empty-state"><p role="alert">{error}</p><button className="button button-secondary button-small mt-3" onClick={onRetry}>Try again</button></div></td></tr>}
+            {!loading && !error && patients.length === 0 && <tr><td colSpan={7}><div className="empty-state">No patient profiles match this search.</div></td></tr>}
+            {error && <tr><td colSpan={7}><div className="empty-state"><p role="alert">{error}</p><button className="button button-secondary button-small mt-3" onClick={onRetry}>Try again</button></div></td></tr>}
           </tbody>
         </table>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Eye,
@@ -51,6 +51,24 @@ const appBannerRoutes = [
   { path: "/clinic-appointment", label: "Clinic appointment" },
 ];
 
+function mapSavedVideo(item: Record<string, unknown>): VideoContentItem {
+  const seconds = typeof item.duration === "number" ? Math.round(item.duration) : 0;
+  return {
+    id: String(item.public_id || item.youtube_video_id || ""),
+    publicId: typeof item.public_id === "string" ? item.public_id : undefined,
+    provider: item.provider === "youtube" ? "youtube" : "cloudinary",
+    title: String(item.title || "Untitled video"), category: String(item.category || "Hair Care"),
+    duration: seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}` : "YouTube",
+    views: 0, likes: 0, creatorName: "Dr. Hair Clinic",
+    thumbnail: String(item.thumbnail_url || ""), videoUrl: String(item.secure_url || ""),
+    caption: String(item.description || ""), treatmentTag: "Hair Care",
+    placement: item.placement === "home" || item.placement === "both" ? item.placement : "reels",
+    apiManaged: true,
+    status: item.status === "published" ? "Published" : item.status === "hidden" ? "Inactive" : "Draft",
+    updated: item.updated_at ? new Date(String(item.updated_at)).toLocaleDateString("en-IN") : "Saved",
+  };
+}
+
 export function ContentManagement({
   mode,
   onToast,
@@ -80,6 +98,10 @@ export function ContentManagement({
     "drhair-demo-content-videos",
     initialVideos
   );
+  const [videoSource, setVideoSource] = useState<"upload" | "youtube">("upload");
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [savingVideo, setSavingVideo] = useState(false);
+  const [videoLoadError, setVideoLoadError] = useState("");
   const [reviews, setReviews] = useSessionState<ReviewContentItem[]>(
     "drhair-demo-content-reviews",
     initialReviews
@@ -93,6 +115,24 @@ export function ContentManagement({
     ...appBannerRoutes,
     ...catalogProducts.filter((product) => product.status === "Active" && product.stock > 0 && product.appProductId).map((product) => ({ path: `/products/${encodeURIComponent(product.appProductId!)}`, label: `Product · ${product.name}` })),
   ], [catalogProducts]);
+
+  useEffect(() => {
+    if (scope !== "content" || !canUploadMedia) return;
+    const controller = new AbortController();
+    fetch("/api/admin/media/videos", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || "Saved videos could not be loaded.");
+        const items = Array.isArray(result?.data?.items) ? result.data.items : [];
+        const mapped: VideoContentItem[] = items.map(mapSavedVideo);
+        setVideos(mapped);
+        setVideoLoadError("");
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setVideoLoadError(error instanceof Error ? error.message : "Saved videos could not be loaded.");
+      });
+    return () => controller.abort();
+  }, [canUploadMedia, scope, setVideos]);
 
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [statusFilter, setStatusFilter] = useState<string>("All status");
@@ -111,6 +151,8 @@ export function ContentManagement({
   const [formTitle, setFormTitle] = useState("");
   const [formCategory, setFormCategory] = useState(categories[0] || "Hair Fall");
   const [formMediaUrl, setFormMediaUrl] = useState("");
+  const [formVideoUrl, setFormVideoUrl] = useState("");
+  const [formVideoPlacement, setFormVideoPlacement] = useState<"home" | "reels" | "both">("reels");
   const [formSecondaryText, setFormSecondaryText] = useState(""); // caption / comment / subtitle
   const [formDetailTag, setFormDetailTag] = useState(""); // treatment / duration / cta
   const [formRating, setFormRating] = useState<number>(5);
@@ -133,6 +175,7 @@ export function ContentManagement({
       return matchesSearch && matchesCat && matchesStatus;
     });
   }, [videos, query, selectedCategory, statusFilter]);
+  const videoCategories = useMemo(() => Array.from(new Set([...categories, ...videos.map((video) => video.category)])).sort(), [categories, videos]);
 
   const filteredReviews = useMemo(() => {
     return reviews.filter((r) => {
@@ -182,6 +225,24 @@ export function ContentManagement({
     }
   };
 
+  const handleVideoFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canUploadMedia) return;
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+    const allowed = ["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"];
+    if (!allowed.includes(file.type)) {
+      onToast("Choose an MP4, MOV, M4V, or WebM video.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      onToast("The video must be under 100 MB.");
+      event.target.value = "";
+      return;
+    }
+    setVideoFile(file);
+  };
+
   // Add New Category
   const handleAddCategory = () => {
     if (!canEdit) return;
@@ -210,6 +271,10 @@ export function ContentManagement({
     setFormTitle("");
     setFormCategory(categories[0] || "Hair Fall");
     setFormMediaUrl("");
+    setFormVideoUrl("");
+    setFormVideoPlacement("reels");
+    setVideoFile(null);
+    setVideoSource("upload");
     setFormSecondaryText("");
     setFormDetailTag("");
     setFormRating(5);
@@ -240,6 +305,9 @@ export function ContentManagement({
       setFormMediaUrl(v.thumbnail);
       setFormSecondaryText(v.caption);
       setFormDetailTag(v.duration);
+      setFormVideoUrl(v.videoUrl || "");
+      setVideoSource(v.provider === "youtube" ? "youtube" : "upload");
+      setVideoFile(null);
     } else if (activeTab === "reviews") {
       const r = item as ReviewContentItem;
       setFormTitle(r.patientName);
@@ -265,7 +333,7 @@ export function ContentManagement({
   };
 
   // Save (Create or Update)
-  const handleSaveContent = () => {
+  const handleSaveContent = async () => {
     if (!canEdit && !(canUploadMedia && !editingItemId)) {
       onToast("This account can’t edit app content.");
       return;
@@ -277,6 +345,16 @@ export function ContentManagement({
     if (!formTitle.trim()) {
       onToast("Please enter a title / name.");
       return;
+    }
+    if (activeTab === "videos" && !editingItemId) {
+      if (videoSource === "youtube" && !formVideoUrl.trim()) {
+        onToast("Paste a YouTube video link first.");
+        return;
+      }
+      if (videoSource === "upload" && !videoFile) {
+        onToast("Choose a video file to upload.");
+        return;
+      }
     }
     if (activeTab === "banners") {
       if (!formMediaUrl.trim()) {
@@ -313,6 +391,55 @@ export function ContentManagement({
     const savedStatus = !canPublish && formStatus === "Published" ? "Draft" : formStatus;
 
     if (activeTab === "videos") {
+      if (!editingItemId) {
+        setSavingVideo(true);
+        try {
+          let response: Response;
+          if (videoSource === "youtube") {
+            response = await fetch("/api/admin/media/videos/youtube", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: formVideoUrl.trim(), title: formTitle.trim(), category: formCategory, description: formSecondaryText.trim(), placement: formVideoPlacement }), cache: "no-store",
+            });
+          } else {
+            const signatureResponse = await fetch("/api/admin/media/videos/signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}), cache: "no-store" });
+            const signatureResult = await signatureResponse.json().catch(() => ({}));
+            if (!signatureResponse.ok || !signatureResult?.data?.apiKey || !signatureResult?.data?.signature) throw new Error(signatureResult.message || "Could not prepare secure Cloudinary upload.");
+            const signature = signatureResult.data;
+            const uploadBody = new FormData();
+            uploadBody.set("file", videoFile as File);
+            uploadBody.set("api_key", String(signature.apiKey));
+            uploadBody.set("timestamp", String(signature.timestamp));
+            uploadBody.set("signature", String(signature.signature));
+            uploadBody.set("folder", String(signature.folder));
+            if (signature.publicId) uploadBody.set("public_id", String(signature.publicId));
+            const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(String(signature.cloudName))}/video/upload`, { method: "POST", body: uploadBody });
+            const asset = await uploadResponse.json().catch(() => ({}));
+            if (!uploadResponse.ok || typeof asset.public_id !== "string") throw new Error(asset.error?.message || "Cloudinary video upload failed.");
+            response = await fetch("/api/admin/media/videos", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ public_id: asset.public_id, title: formTitle.trim(), category: formCategory, description: formSecondaryText.trim(), placement: formVideoPlacement }), cache: "no-store",
+            });
+          }
+          let result = await response.json().catch(() => ({}));
+          if (!response.ok || !result?.data) throw new Error(result.message || "Video could not be saved.");
+          let savedVideo = result.data as Record<string, unknown>;
+          if (savedStatus === "Published") {
+            const statusResponse = await fetch("/api/admin/media/videos/status", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ public_id: savedVideo.public_id, status: "published" }), cache: "no-store" });
+            result = await statusResponse.json().catch(() => ({}));
+            if (!statusResponse.ok || !result?.data) throw new Error(result.message || "Video was saved as a draft but could not be published.");
+            savedVideo = result.data as Record<string, unknown>;
+          }
+          const mappedVideo = mapSavedVideo(savedVideo);
+          setVideos((current) => [mappedVideo, ...current.filter((item) => item.id !== mappedVideo.id)]);
+          setIsCreateModalOpen(false);
+          setVideoFile(null);
+          onAudit(savedStatus === "Published" ? "published app video" : "saved app video draft", mappedVideo.title);
+          onToast(savedStatus === "Published" ? "Video published to the app." : "Video saved as a draft.");
+        } catch (error) {
+          onToast(error instanceof Error ? error.message : "Video could not be uploaded.");
+        } finally { setSavingVideo(false); }
+        return;
+      }
       if (editingItemId) {
         setVideos((prev) =>
           prev.map((v) =>
@@ -438,6 +565,27 @@ export function ContentManagement({
     if (!canPublish && formStatus === "Published") onToast("Saved as a draft. Dr. Jai Bansal must publish it to the app.");
   };
 
+  const toggleSavedVideoStatus = async (video: VideoContentItem) => {
+    if (!video.apiManaged || !video.publicId) return;
+    const nextStatus = video.status === "Published" ? "draft" : "published";
+    try {
+      const response = await fetch("/api/admin/media/videos/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ public_id: video.publicId, status: nextStatus }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.data) throw new Error(result.message || "Video status could not be updated.");
+      const updated = mapSavedVideo(result.data as Record<string, unknown>);
+      setVideos((current) => current.map((item) => item.id === video.id ? updated : item));
+      onAudit(nextStatus === "published" ? "published app video" : "unpublished app video", video.title);
+      onToast(nextStatus === "published" ? "Video published to the app." : "Video moved back to drafts.");
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Video status could not be updated.");
+    }
+  };
+
   // Delete Item
   const handleDeleteItem = (id: string) => {
     if (!canEdit) return;
@@ -476,7 +624,7 @@ export function ContentManagement({
               <Plus size={14} />
               <span>
                 {activeTab === "videos"
-                  ? "Upload Video Reel"
+                  ? "Upload Video"
                   : activeTab === "reviews"
                     ? "Add Patient Review"
                     : "Create Banner"}
@@ -490,6 +638,7 @@ export function ContentManagement({
         <Eye size={14} />
         <span>This workspace is for public Dr. Hair app media and approved stories. Keep private patient files in Patients → Documents or Hair tests & reports, and confirm a patient release before publishing a testimonial.</span>
       </div>
+      {scope === "content" && videoLoadError && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" role="status">Saved videos could not refresh from the API: {videoLoadError}</div>}
 
       {embedded && <div className="mb-4 flex flex-wrap justify-end gap-2">
         {canEdit && <button className="button button-secondary button-small" onClick={() => setIsCategoryModalOpen(true)}><FolderPlus size={13} />Add category</button>}
@@ -575,7 +724,7 @@ export function ContentManagement({
           >
             All
           </button>
-          {categories.map((cat) => (
+          {(activeTab === "videos" ? videoCategories : categories).map((cat) => (
             <button
               key={cat}
               className={`px-2.5 py-1 rounded-full font-medium transition-colors whitespace-nowrap ${selectedCategory === cat
@@ -665,11 +814,11 @@ export function ContentManagement({
                 {/* Content Details */}
                 <div className="p-3.5 flex flex-col flex-1 justify-between gap-2">
                   <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500 mb-1">
                       <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-full font-semibold border border-teal-100">
                         {video.category}
                       </span>
-                      <span>{video.creatorName}</span>
+                      <span>{video.placement === "both" ? "Home + Reels" : video.placement === "home" ? "Home" : video.placement === "reels" ? "Reels" : video.creatorName}</span>
                     </div>
                     <h4 className="font-bold text-slate-800 text-xs line-clamp-2 m-0 group-hover:text-teal-700 transition-colors">
                       {video.title}
@@ -690,7 +839,15 @@ export function ContentManagement({
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
+                      {video.apiManaged ? <button
+                        type="button"
+                        onClick={() => void toggleSavedVideoStatus(video)}
+                        disabled={!canPublish}
+                        className="p-1.5 text-slate-500 hover:text-teal-700 rounded hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={canPublish ? (video.status === "Published" ? "Move to drafts" : "Publish video") : "Publishing permission required"}
+                      >
+                        <CheckCircle2 size={13} />
+                      </button> : <><button
                         onClick={() => openEditModal(video)}
                         className="p-1.5 text-slate-500 hover:text-teal-700 rounded hover:bg-slate-100"
                         title="Edit video reel"
@@ -703,7 +860,7 @@ export function ContentManagement({
                         title="Delete video"
                       >
                         <Trash2 size={13} />
-                      </button>
+                      </button></>}
                     </div>
                   </div>
                 </div>
@@ -753,8 +910,7 @@ export function ContentManagement({
                     <td>{v.updated}</td>
                     <td>
                       <div className="flex items-center gap-1">
-                        <button onClick={() => openEditModal(v)} className="row-action" title="Edit"><Pencil size={14} /></button>
-                        <button onClick={() => handleDeleteItem(v.id)} className="row-action hover:text-rose-600" title="Delete"><Trash2 size={14} /></button>
+                        {v.apiManaged ? <button onClick={() => void toggleSavedVideoStatus(v)} className="row-action" disabled={!canPublish} title={canPublish ? (v.status === "Published" ? "Move to drafts" : "Publish video") : "Publishing permission required"}><CheckCircle2 size={14} /></button> : <><button onClick={() => openEditModal(v)} className="row-action" title="Edit"><Pencil size={14} /></button><button onClick={() => handleDeleteItem(v.id)} className="row-action hover:text-rose-600" title="Delete"><Trash2 size={14} /></button></>}
                       </div>
                     </td>
                   </tr>
@@ -995,11 +1151,12 @@ export function ContentManagement({
         <Modal
           title={
             editingItemId
-              ? `Edit ${activeTab === "videos" ? "Video Reel" : activeTab === "reviews" ? "Patient Review" : "Banner"}`
-              : `Upload New ${activeTab === "videos" ? "Video Reel" : activeTab === "reviews" ? "Patient Review" : "Banner"}`
+              ? `Edit ${activeTab === "videos" ? "Video" : activeTab === "reviews" ? "Patient Review" : "Banner"}`
+              : `Upload New ${activeTab === "videos" ? "Video" : activeTab === "reviews" ? "Patient Review" : "Banner"}`
           }
           description="Upload media, configure category, and publish directly to the mobile app library."
-          submitLabel={canPublish && formStatus === "Published" ? "Publish to App" : "Save Draft"}
+          submitLabel={savingVideo ? "Uploading…" : canPublish && formStatus === "Published" ? "Publish to App" : "Save Draft"}
+          submitDisabled={savingVideo}
           onClose={() => setIsCreateModalOpen(false)}
           onSubmit={handleSaveContent}
         >
@@ -1059,15 +1216,26 @@ export function ContentManagement({
                 >
                   <option value="Published" disabled={!canPublish}>Published{!canPublish ? " · Doctor only" : ""}</option>
                   <option value="Draft">Draft</option>
-                  <option value="Review">In Review</option>
+                  {activeTab !== "videos" && <option value="Review">In Review</option>}
                 </select>
               </div>
             </div>
 
+            {activeTab === "videos" && !editingItemId && <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/50 p-3.5">
+              <div><p className="text-xs font-semibold text-slate-700">Video source</p><p className="mt-1 text-[10px] text-slate-500">Upload a video to Cloudinary or add one YouTube video link.</p></div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className={`rounded-lg border px-3 py-2.5 text-left text-xs font-semibold ${videoSource === "upload" ? "border-teal-500 bg-white text-teal-800 shadow-sm" : "border-slate-200 bg-slate-50 text-slate-600"}`} onClick={() => setVideoSource("upload")}><UploadCloud size={14} className="mb-1" />Upload video</button>
+                <button type="button" className={`rounded-lg border px-3 py-2.5 text-left text-xs font-semibold ${videoSource === "youtube" ? "border-teal-500 bg-white text-teal-800 shadow-sm" : "border-slate-200 bg-slate-50 text-slate-600"}`} onClick={() => setVideoSource("youtube")}><Play size={14} className="mb-1" />YouTube link</button>
+              </div>
+              {videoSource === "youtube" ? <label className="block text-xs font-medium text-slate-600">YouTube video URL<input type="url" required placeholder="https://youtu.be/… or youtube.com/watch?v=…" value={formVideoUrl} onChange={(event) => setFormVideoUrl(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs" /></label> : <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-teal-300 bg-white p-3"><input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v" className="sr-only" onChange={handleVideoFileSelect} disabled={savingVideo} /><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal-50 text-teal-700"><Video size={17} /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-700">{videoFile?.name || "Choose a video"}</span><span className="mt-1 block text-[10px] text-slate-400">MP4, MOV, M4V or WebM · max 100 MB</span></span><span className="button button-secondary button-small">Browse</span></label>}
+              <label className="block text-xs font-medium text-slate-600">Show video in<select className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs" value={formVideoPlacement} onChange={(event) => setFormVideoPlacement(event.target.value as "home" | "reels" | "both")}><option value="home">Home screen</option><option value="reels">Reels</option><option value="both">Home screen and Reels</option></select></label>
+              <label className="block text-xs font-medium text-slate-600">Video description<textarea rows={2} maxLength={2000} placeholder="A short description for the app" value={formSecondaryText} onChange={(event) => setFormSecondaryText(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs" /></label>
+            </div>}
+
             {/* Media Upload & URL with Live Preview */}
-            <div className="space-y-2">
+            {activeTab !== "videos" && <div className="space-y-2">
               <label className="block text-slate-600 font-medium">
-                {activeTab === "videos" ? "Video Thumbnail / Image" : activeTab === "reviews" ? "Patient Avatar / Result Photo" : "Banner Visual Media"}
+                {activeTab === "reviews" ? "Patient Avatar / Result Photo" : "Banner Visual Media"}
               </label>
 
               {/* Upload Dropzone */}
@@ -1120,34 +1288,9 @@ export function ContentManagement({
                   </button>
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* Tab Specific Extra Fields */}
-            {activeTab === "videos" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 font-medium mb-1">Video Duration (MM:SS)</label>
-                  <input
-                    type="text"
-                    className="w-full border border-slate-300 rounded-lg p-2 text-xs"
-                    placeholder="e.g. 1:45"
-                    value={formDetailTag}
-                    onChange={(e) => setFormDetailTag(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-600 font-medium mb-1">Treatment / Protocol Tag</label>
-                  <input
-                    type="text"
-                    className="w-full border border-slate-300 rounded-lg p-2 text-xs"
-                    placeholder="e.g. Topical Solution"
-                    value={formSecondaryText}
-                    onChange={(e) => setFormSecondaryText(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-
             {activeTab === "reviews" && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">

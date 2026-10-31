@@ -32,15 +32,19 @@ interface AdminShellProps {
   permissions: AdminPermissionId[];
   isOwner: boolean;
   userName: string;
-  previewAdminId: string;
-  adminOptions: { id: string; name: string; role: string; status: string }[];
-  mobileOpen: boolean;
+  showSearch?: boolean;
+  headerTitle?: string;
+  headerSubtitle?: string;
+  onHeaderBack?: () => void;
+  previewAdminId?: string;
+  adminOptions?: { id: string; name: string; role: string; status: string }[];
+  mobileOpen?: boolean;
   children: React.ReactNode;
   onRoleChange: (role: Role) => void;
-  onAdminPreviewChange: (id: string) => void;
+  onAdminPreviewChange?: (id: string) => void;
   onPageChange: (page: PageKey) => void;
   onSearchChange: (value: string) => void;
-  onMobileOpenChange: (open: boolean) => void;
+  onMobileOpenChange?: (open: boolean) => void;
   onSignOut: () => void;
 }
 
@@ -96,8 +100,12 @@ export function AdminShell({
   permissions,
   isOwner,
   userName,
+  showSearch = true,
+  headerTitle,
+  headerSubtitle,
+  onHeaderBack,
   previewAdminId,
-  adminOptions,
+  adminOptions = [],
   mobileOpen,
   children,
   onRoleChange,
@@ -137,7 +145,7 @@ export function AdminShell({
         setProfileMenuOpen(false);
         setMobileDrawerOpen(false);
         setSettingsModalOpen(false);
-        onMobileOpenChange(false);
+        onMobileOpenChange?.(false);
       }
     };
 
@@ -566,6 +574,17 @@ export function AdminShell({
         >
           {/* Left Greeting & Mobile Drawer Button */}
           <div className="flex items-center gap-3 min-w-0">
+            {onHeaderBack && (
+              <button
+                type="button"
+                className="w-10 h-10 rounded-xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-[#1A365D] hover:bg-slate-50 shrink-0"
+                onClick={onHeaderBack}
+                aria-label="Go back"
+              >
+                <ChevronLeft size={18} />
+              </button>
+            )}
+
             <button
               type="button"
               className="md:hidden w-10 h-10 rounded-xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-[#1A365D]"
@@ -577,10 +596,10 @@ export function AdminShell({
 
             <div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#1A365D] leading-tight">
-                Hi, {greetingName}!
+                {headerTitle || `Hi, ${greetingName}!`}
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                Let&apos;s take a look at your clinic activity today
+                {headerSubtitle || "Let's take a look at your clinic activity today"}
               </p>
             </div>
           </div>
@@ -588,16 +607,18 @@ export function AdminShell({
           {/* Right Header Search & Role */}
           <div className="flex items-center gap-3">
             {/* Search Pill */}
-            <div className="hidden sm:flex items-center gap-2.5 bg-white rounded-full px-4 py-2 shadow-sm border border-slate-200/80 w-52 md:w-64 focus-within:w-72 focus-within:ring-2 focus-within:ring-[#1A365D] transition-all">
-              <Search size={14} className="text-slate-400 shrink-0" />
-              <input
-                type="text"
-                placeholder="Search patient records..."
-                value={globalSearch}
-                onChange={(e) => onSearchChange(e.target.value)}
-                className="w-full bg-transparent border-0 outline-none text-xs text-slate-800 placeholder:text-slate-400"
-              />
-            </div>
+            {showSearch && (
+              <div className="hidden sm:flex items-center gap-2.5 bg-white rounded-full px-4 py-2 shadow-sm border border-slate-200/80 w-52 md:w-64 focus-within:w-72 focus-within:ring-2 focus-within:ring-[#1A365D] transition-all">
+                <Search size={14} className="text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Search patient records..."
+                  value={globalSearch}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  className="w-full bg-transparent border-0 outline-none text-xs text-slate-800 placeholder:text-slate-400"
+                />
+              </div>
+            )}
 
             {/* Quick action button */}
             <button

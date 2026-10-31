@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ArrowRight, ArrowUpRight, CalendarDays, ClipboardCheck, Eye, EyeOff, KeyRound, ShieldCheck, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { BrandLogo } from "./brand-logo";
@@ -90,7 +91,19 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (admin: AdminIden
             <div className="signin-preview-foot"><span className="signin-preview-check"><ShieldCheck size={13} /></span><span>Role-based access for your clinic team</span><span className="signin-preview-foot-line" /></div>
           </div>
         </div>
-        <div className="signin-foot"><span>Dr. Hair Clinical Admin Panel</span><span>Version 2.0.0</span></div>
+        <div className="signin-foot">
+          <span>Dr. Hair Clinical Admin Panel</span>
+          <div className="hidden sm:flex items-center gap-2.5 text-[11px] text-[#788995]">
+            <Link href="/privacy" className="hover:text-[#1A365D] hover:underline">Privacy</Link>
+            <span>•</span>
+            <Link href="/terms" className="hover:text-[#1A365D] hover:underline">Terms</Link>
+            <span>•</span>
+            <Link href="/delete-account" className="hover:text-[#1A365D] hover:underline">Data Deletion</Link>
+            <span>•</span>
+            <Link href="/support" className="hover:text-[#1A365D] hover:underline">Support</Link>
+          </div>
+          <span>Version 2.0.0</span>
+        </div>
       </section>
 
       <section className="signin-side">
@@ -119,6 +132,18 @@ export function SignIn({ onAuthenticated }: { onAuthenticated: (admin: AdminIden
 
           <div className="signin-secure"><ShieldCheck size={14} /><span>Your password is checked securely and never saved in this browser.</span></div>
           <div className="signin-help"><span className="signin-help-icon"><KeyRound size={14} /></span><span><strong>Need a staff login?</strong><small>Ask your Super Admin to create your account.</small></span><ArrowUpRight size={14} /></div>
+
+          <div className="mt-6 pt-4 border-t border-[#e8edf1] flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-[#788995]">
+            <Link href="/legal" className="hover:text-[#1A365D] font-semibold hover:underline">Legal Hub</Link>
+            <span>•</span>
+            <Link href="/privacy" className="hover:text-[#1A365D] hover:underline">Privacy</Link>
+            <span>•</span>
+            <Link href="/terms" className="hover:text-[#1A365D] hover:underline">Terms</Link>
+            <span>•</span>
+            <Link href="/delete-account" className="hover:text-[#1A365D] hover:underline">Delete Account</Link>
+            <span>•</span>
+            <Link href="/support" className="hover:text-[#1A365D] hover:underline">Support</Link>
+          </div>
         </div>
       </section>
     </main>

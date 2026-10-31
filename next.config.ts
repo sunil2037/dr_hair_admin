@@ -11,6 +11,15 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async redirects() {
+    return [
+      { source: "/privacy-policy", destination: "/privacy", permanent: true },
+      { source: "/terms-and-conditions", destination: "/terms", permanent: true },
+      { source: "/data-deletion", destination: "/delete-account", permanent: true },
+      { source: "/contact", destination: "/support", permanent: true },
+      { source: "/refunds", destination: "/refund-policy", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

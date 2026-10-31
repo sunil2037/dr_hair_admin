@@ -7,6 +7,7 @@ import {
   PackagePlus, Pencil, Search, Star, Video, X,
 } from "lucide-react";
 import { Modal, StatusPill } from "../../shared/components/ui";
+import { FullSizeImageViewer, type ViewerImage } from "../../shared/components/full-size-image-viewer";
 import { useSessionState } from "../../shared/lib/use-session-state";
 import { formatCurrency } from "../lib/format";
 import type {
@@ -254,6 +255,7 @@ function ProductEditor({ product, onClose, onSave }: {
 }) {
   const [form, setForm] = useState<ProductFormState>(() => formFor(product));
   const [previews, setPreviews] = useState<PreviewMedia[]>([]);
+  const [imageToView, setImageToView] = useState<ViewerImage | null>(null);
   const activeUrls = useRef<string[]>([]);
   const setField = <K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) => setForm((current) => ({ ...current, [key]: value }));
   useEffect(() => () => activeUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
@@ -289,7 +291,7 @@ function ProductEditor({ product, onClose, onSave }: {
     }
   };
 
-  return <Modal className="product-editor-modal" title={product ? "Edit product" : "Add product"} description="Prepare the catalog content and every supply plan shown in the app." submitLabel={product ? "Save product" : "Add to catalog"} onClose={onClose} onSubmit={() => { if (onSave(form, product)) onClose(); }}>
+  return <><Modal className="product-editor-modal" title={product ? "Edit product" : "Add product"} description="Prepare the catalog content and every supply plan shown in the app." submitLabel={product ? "Save product" : "Add to catalog"} onClose={onClose} onSubmit={() => { if (onSave(form, product)) onClose(); }}>
     <div className="product-editor-section"><div className="product-editor-section-head"><div><h3>Store listing</h3><p>Name, category, and app filters</p></div><span className="product-section-number">01</span></div>
       <div className="product-form-grid">
         <div className="field"><label htmlFor="product-name">Product name *</label><input id="product-name" value={form.name} onChange={(event) => setField("name", event.target.value)} placeholder="e.g. Daily scalp serum" /></div>
@@ -333,7 +335,7 @@ function ProductEditor({ product, onClose, onSave }: {
         const preview = previews.find((item) => item.name === media.name);
         const Icon = media.kind === "video" ? Video : Package;
         return <div className="product-media-row" key={`${media.name}-${index}`}>
-          <span className="product-media-thumb">{preview?.kind === "image" ? <Image src={preview.url} alt="" width={30} height={30} unoptimized /> : <Icon size={15} />}</span>
+          <button type="button" className="product-media-thumb" aria-label={`View ${media.name} full size`} disabled={preview?.kind !== "image"} onClick={() => preview?.kind === "image" && setImageToView({ src: preview.url, alt: media.altText || media.name, fileName: media.name, caption: "Product image preview" })}>{preview?.kind === "image" ? <Image src={preview.url} alt="" width={30} height={30} unoptimized /> : <Icon size={15} />}</button>
           <span className="product-media-name" title={media.name}>{media.name}<small>{media.kind}</small></span>
           <input aria-label={`Alt text for ${media.name}`} value={media.altText ?? ""} onChange={(event) => updateMedia(index, { altText: event.target.value })} placeholder="Alt text or caption" />
           <button type="button" className={`row-action ${media.isPrimary ? "primary-media-selected" : ""}`} aria-label={media.isPrimary ? "Primary image" : `Set ${media.name} as primary image`} onClick={() => setField("media", form.media.map((item, mediaIndex) => ({ ...item, isPrimary: mediaIndex === index && item.kind === "image" })))} disabled={media.kind !== "image"}><Star size={14} /></button>
@@ -343,7 +345,7 @@ function ProductEditor({ product, onClose, onSave }: {
         </div>;
       })}{form.media.length === 0 && <div className="media-empty product-media-empty">No media added yet.</div>}</div>
     </div>
-  </Modal>;
+  </Modal><FullSizeImageViewer image={imageToView} onClose={() => setImageToView(null)} /></>;
 }
 
 function ProductDetails({ product, movements, onClose, onEdit, onAdjustStock }: {

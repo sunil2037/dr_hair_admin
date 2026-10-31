@@ -19,6 +19,7 @@ export function ReferralsPanel({ referrals, enabled, onEnabledChange, onReferral
   const [email, setEmail] = useState("");
   const [reward, setReward] = useState("250");
   const [code, setCode] = useState("DRH-FRIEND");
+  const [referralToRemove, setReferralToRemove] = useState<ReferralRecord | null>(null);
   const activeReferrers = referrals.filter((referral) => referral.status === "Active").length;
   const totalReferrals = referrals.reduce((sum, referral) => sum + referral.referrals, 0);
   const totalOrders = referrals.reduce((sum, referral) => sum + referral.orders, 0);
@@ -32,7 +33,7 @@ export function ReferralsPanel({ referrals, enabled, onEnabledChange, onReferral
     onToast(`Referral code created for ${newReferral.name}.`);
   };
   const toggleReferrer = (referral: ReferralRecord) => onReferralsChange((current) => current.map((item) => item.id === referral.id ? { ...item, status: item.status === "Active" ? "Paused" : "Active" } : item));
-  const removeReferrer = (referral: ReferralRecord) => { onReferralsChange((current) => current.filter((item) => item.id !== referral.id)); onToast(`${referral.name} removed from the referral preview.`); };
+  const removeReferrer = (referral: ReferralRecord) => { onReferralsChange((current) => current.filter((item) => item.id !== referral.id)); onToast(`${referral.name} removed from the referral preview.`); setReferralToRemove(null); };
 
   return <>
     <div className="commerce-toolbar"><div><h2 className="commerce-section-title">Referral program</h2><p className="card-note">Reward customers for sharing products with friends</p></div><button className="button button-primary" onClick={() => { setCode(makeReferralCode()); setOpen(true); }}><Plus size={14} />Create referral code</button></div>
@@ -53,7 +54,7 @@ export function ReferralsPanel({ referrals, enabled, onEnabledChange, onReferral
         <td><div className="referrer-person"><span className="avatar">{referral.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><div><strong>{referral.name}</strong><small>{referral.email}</small></div></div></td>
         <td><div className="coupon-code-cell"><code>{referral.code}</code><button className="row-action" aria-label={`Copy ${referral.code}`} onClick={async () => { try { await navigator.clipboard.writeText(referral.code); onToast("Referral code copied."); } catch { onToast(`Referral code: ${referral.code}`); } }}><Copy size={13} /></button></div></td>
         <td>{formatCurrency(referral.reward)}</td><td>{referral.referrals}</td><td>{referral.orders}</td><td><span className="margin-pill">{conversion}%</span></td><td><strong>{formatCurrency(referral.revenue)}</strong></td><td><StatusPill status={referral.status} /></td>
-        <td><div className="table-actions"><ToggleSwitch checked={referral.status === "Active"} label={`${referral.status === "Active" ? "Pause" : "Activate"} ${referral.name}`} onChange={() => toggleReferrer(referral)} /><button className="row-action danger-action" aria-label={`Remove ${referral.name}`} onClick={() => removeReferrer(referral)}><Trash2 size={13} /></button></div></td>
+        <td><div className="table-actions"><ToggleSwitch checked={referral.status === "Active"} label={`${referral.status === "Active" ? "Pause" : "Activate"} ${referral.name}`} onChange={() => toggleReferrer(referral)} /><button className="row-action danger-action" aria-label={`Remove ${referral.name}`} onClick={() => setReferralToRemove(referral)}><Trash2 size={13} /></button></div></td>
       </tr>; })}{referrals.length === 0 && <tr><td colSpan={9}><div className="empty-state">No referral codes yet. Create a code to start tracking shares.</div></td></tr>}</tbody></table></div>
       <div className="table-footer"><span>Referral rewards are sample settings</span>{canExport && <button className="text-action" onClick={() => onToast("Referral export will be available with reporting APIs.")}>Export report <ArrowUpRight size={13} /></button>}</div>
     </section>
@@ -63,6 +64,9 @@ export function ReferralsPanel({ referrals, enabled, onEnabledChange, onReferral
       <div className="field"><label htmlFor="referral-reward">Store credit reward (₹)</label><input id="referral-reward" type="number" min="0" value={reward} onChange={(event) => setReward(event.target.value)} /></div>
       <div className="field"><label htmlFor="referral-code">Share code</label><div className="code-input-row"><input id="referral-code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/\s/g, ""))} /><button className="button button-secondary button-small" onClick={() => setCode(makeReferralCode())}>Generate</button></div></div>
       <div className="offer-preview"><Share2 size={16} /><span><strong>{code || "UNIQUECODE"}</strong><small>Unique code · {formatCurrency(Number(reward) || 0)} reward</small></span></div>
+    </Modal>}
+    {referralToRemove && <Modal title="Remove this referral partner?" description="Removing the partner also removes this code from the current referral list. Confirm before continuing." submitLabel="Remove partner" submitVariant="danger" onClose={() => setReferralToRemove(null)} onSubmit={() => removeReferrer(referralToRemove)}>
+      <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-900"><p className="font-semibold">{referralToRemove.name} · {referralToRemove.code}</p><p className="mt-1 leading-5">This removal cannot be undone in this browser preview.</p></div>
     </Modal>}
   </>;
 }

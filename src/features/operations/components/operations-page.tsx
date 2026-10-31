@@ -99,6 +99,7 @@ function CareOperationsPage({
   const [bookingDateFilter, setBookingDateFilter] = useState(initialDateFilter);
   const [printingSlipBooking, setPrintingSlipBooking] = useState<BookingRecord | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [holidayToReopen, setHolidayToReopen] = useState<string | null>(null);
   const [clinicHolidays, setClinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", [
     "2026-11-01",
     "2026-11-02",
@@ -134,6 +135,7 @@ function CareOperationsPage({
           const createdAt = user.created_at ? new Date(String(user.created_at)) : null;
           return {
             id: String(user.id ?? ""),
+            patientCode: typeof user.patient_code === "string" ? user.patient_code : undefined,
             name,
             initials: name.split(/\s+/).map((part) => part[0] || "").join("").slice(0, 2).toUpperCase(),
             email: String(user.email || ""),
@@ -218,7 +220,7 @@ function CareOperationsPage({
     return patients.filter((item) => {
       const profile = profiles[item.id] ?? createFallbackProfile(item);
       const diagnosis = profile?.diagnoses[0]?.name ?? item.assessment;
-      const searchText = canViewClinicalPatients ? `${item.name} ${item.email} ${item.assessment} ${diagnosis} ${item.id}` : `${item.name} ${item.id}`;
+      const searchText = canViewClinicalPatients ? `${item.name} ${item.patientCode ?? ""} ${item.email} ${item.assessment} ${diagnosis} ${item.id}` : `${item.name} ${item.patientCode ?? ""} ${item.id}`;
       const matchesSearch = searchText
         .toLowerCase()
         .includes(search);
@@ -298,13 +300,13 @@ function CareOperationsPage({
       onToast("Patient chart access is not assigned to this admin account.");
       return;
     }
-    const matched = patients.find((patient) => patient.id === appointment.patientId);
+    const matched = patients.find((patient) => patient.id === appointment.patientId || patient.patientCode === appointment.patientId);
     if (!matched) {
       onToast("No linked patient record was found for this appointment.");
       return;
     }
     setDialog(null);
-    router.push(`/patients/${encodeURIComponent(matched.id)}`);
+    router.push(`/patients/${encodeURIComponent(matched.patientCode || matched.id)}`);
   };
 
   const createAppointment = () => {
@@ -595,7 +597,7 @@ function CareOperationsPage({
                     <tr
                       key={patient.id}
                       className="hover:bg-slate-50/80 cursor-pointer"
-                      onClick={() => router.push(`/patients/${encodeURIComponent(patient.id)}`)}
+                      onClick={() => router.push(`/patients/${encodeURIComponent(patient.patientCode || patient.id)}`)}
                     >
                       <td>
                         <div className="person">
@@ -603,7 +605,7 @@ function CareOperationsPage({
                           <div>
                             <div className="person-name font-semibold text-slate-800">{patient.name}</div>
                             <div className="person-sub text-[11px] text-slate-500">
-                              {patient.id} · {profile?.age ? `${profile.age} yrs` : "Age —"} · {patient.email}
+                              {patient.patientCode || patient.id} · {profile?.age ? `${profile.age} yrs` : "Age —"} · {patient.email}
                             </div>
                           </div>
                         </div>
@@ -661,7 +663,7 @@ function CareOperationsPage({
                           aria-label={`Open clinical record for ${patient.name}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            router.push(`/patients/${encodeURIComponent(patient.id)}`);
+                            router.push(`/patients/${encodeURIComponent(patient.patientCode || patient.id)}`);
                           }}
                         >
                           <ArrowRight size={15} />
@@ -687,9 +689,9 @@ function CareOperationsPage({
               <tbody>{filteredPatients.map((patient) => {
                 const documents = profiles[patient.id]?.documents ?? [];
                 return <tr key={patient.id}>
-                  <td><div className="person"><Avatar initials={patient.initials} /><div><div className="person-name">{patient.name}</div><div className="person-sub">{patient.id}</div></div></div></td>
+                  <td><div className="person"><Avatar initials={patient.initials} /><div><div className="person-name">{patient.name}</div><div className="person-sub">{patient.patientCode || patient.id}</div></div></div></td>
                   <td>{documents.length} document{documents.length === 1 ? "" : "s"}</td>
-                  <td><button className="button button-secondary button-small" onClick={() => router.push(`/patients/${encodeURIComponent(patient.id)}`)}>Open patient record</button></td>
+                  <td><button className="button button-secondary button-small" onClick={() => router.push(`/patients/${encodeURIComponent(patient.patientCode || patient.id)}`)}>Open patient record</button></td>
                 </tr>;
               })}{filteredPatients.length === 0 && <tr><td colSpan={3}><div className="empty-state">No patient matches that name or ID.</div></td></tr>}</tbody>
             </table>
@@ -910,7 +912,7 @@ function CareOperationsPage({
                 return <section className="closed-date-card" key={closedDate}>
                   <div className="closed-date-heading flex-col items-start sm:flex-row sm:items-center">
                     <div><strong>{formatDateKey(closedDate)}</strong><span>Closed to new bookings</span></div>
-                    <button type="button" className="button button-secondary button-small w-full sm:w-auto" onClick={() => removeClinicHoliday(closedDate)}>Reopen date</button>
+                    <button type="button" className="button button-secondary button-small w-full sm:w-auto" onClick={() => setHolidayToReopen(closedDate)}>Reopen date</button>
                   </div>
                   {affected.length > 0 && <div className="closed-date-appointments">
                     <p>{affected.length} existing appointment{affected.length === 1 ? "" : "s"} to review</p>
@@ -925,6 +927,20 @@ function CareOperationsPage({
           </div>
         </Modal>
       )}
+
+      {holidayToReopen && <Modal
+        title="Reopen this clinic date?"
+        description="New patient appointments will be accepted on this date again. Please confirm this schedule change."
+        submitLabel="Reopen date"
+        submitVariant="danger"
+        onClose={() => setHolidayToReopen(null)}
+        onSubmit={() => { removeClinicHoliday(holidayToReopen); setHolidayToReopen(null); }}
+      >
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-950">
+          <p className="font-semibold">{formatDateKey(holidayToReopen)}</p>
+          <p className="mt-1 leading-5">Removing this closure immediately makes the clinic available for new bookings.</p>
+        </div>
+      </Modal>}
 
       {/* Printable In-Clinic OPD Consultation Slip */}
       {printingSlipBooking && (
@@ -1026,20 +1042,20 @@ function PatientDirectory({
     />
     <section className="card">
       <div className="card-head"><div><h2 className="card-title">Patient profiles</h2><p className="card-note">Search is debounced and results are paginated by the backend.</p></div></div>
-      <TableToolbar value={query} onChange={onQueryChange} placeholder="Search by name, email, or phone..." />
+      <TableToolbar value={query} onChange={onQueryChange} placeholder="Search by patient ID, name, email, or phone..." />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Patient</th><th>Email</th><th>Phone</th><th>Age & location</th><th>Registered</th><th>Photo</th><th /></tr></thead>
           <tbody>
             {loading && patients.length === 0 && <tr><td colSpan={7}><div className="empty-state">Loading patient profiles…</div></td></tr>}
-            {!loading && !error && patients.map((patient) => <tr key={patient.id} className="cursor-pointer hover:bg-teal-50/50" onClick={() => onOpenPatient(patient.id)}>
-              <td><div className="person"><Avatar initials={patient.initials} /><div><div className="person-name">{patient.name}</div><div className="person-sub">ID {patient.id}</div></div></div></td>
+            {!loading && !error && patients.map((patient) => <tr key={patient.id} className="cursor-pointer hover:bg-teal-50/50" onClick={() => onOpenPatient(patient.patientCode || patient.id)}>
+              <td><div className="person"><Avatar initials={patient.initials} /><div><div className="person-name">{patient.name}</div><div className="person-sub">ID {patient.patientCode || patient.id}</div></div></div></td>
               <td>{patient.email || "—"}</td>
               <td>{patient.phone || "—"}</td>
               <td>{patient.age ?? "—"}{patient.gender ? ` · ${patient.gender}` : ""}{patient.city ? ` · ${patient.city}` : ""}</td>
               <td>{patient.submitted}</td>
               <td>{patient.photoUrl?.startsWith("https://") ? <a className="text-teal-700 underline" href={patient.photoUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>Open photo</a> : "—"}</td>
-              <td><button className="button button-secondary button-small" onClick={(event) => { event.stopPropagation(); onOpenPatient(patient.id); }}>Open record</button></td>
+              <td><button className="button button-secondary button-small" onClick={(event) => { event.stopPropagation(); onOpenPatient(patient.patientCode || patient.id); }}>Open record</button></td>
             </tr>)}
             {!loading && !error && patients.length === 0 && <tr><td colSpan={7}><div className="empty-state">No patient profiles match this search.</div></td></tr>}
             {error && <tr><td colSpan={7}><div className="empty-state"><p role="alert">{error}</p><button className="button button-secondary button-small mt-3" onClick={onRetry}>Try again</button></div></td></tr>}

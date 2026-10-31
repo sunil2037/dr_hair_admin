@@ -171,11 +171,11 @@ export function AdminShell({
   const greetingName = userName.includes("@") || firstName === "Dr." ? "Dr. Hair" : firstName;
   const initials = userName
     ? userName
-        .split(/\s+/)
-        .map((p) => p[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
+      .split(/\s+/)
+      .map((p) => p[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase()
     : "DH";
 
   // Navigation icon mapper
@@ -184,9 +184,8 @@ export function AdminShell({
       return (
         <svg
           viewBox="0 0 24 24"
-          className={`w-5 h-5 transition-transform ${
-            isActive ? "text-[#0D9488] fill-[#0D9488]" : "text-slate-600 group-hover:text-[#1A365D]"
-          }`}
+          className={`w-5 h-5 transition-transform ${isActive ? "text-[#0D9488] fill-[#0D9488]" : "text-slate-600 group-hover:text-[#1A365D]"
+            }`}
           fill={isActive ? "currentColor" : "none"}
           stroke={isActive ? "none" : "currentColor"}
           strokeWidth={1.8}
@@ -217,9 +216,8 @@ export function AdminShell({
       {/* ==================================================================== */}
       <aside
         id="admin-navigation"
-        className={`fixed top-0 bottom-0 left-0 z-40 hidden md:flex flex-col items-center justify-between py-5 px-3 bg-[#F7F9FC] transition-[width] duration-300 ease-out select-none ${
-          isExpanded ? "w-[240px]" : "w-[84px]"
-        }`}
+        className={`fixed top-0 bottom-0 left-0 z-40 hidden md:flex flex-col items-center justify-between py-5 px-3 bg-[#F7F9FC] transition-[width] duration-300 ease-out select-none ${isExpanded ? "w-[240px]" : "w-[84px]"
+          }`}
         aria-label="Main navigation"
       >
         {/* Brand Top + Expand/Collapse Button */}
@@ -259,9 +257,8 @@ export function AdminShell({
 
         {/* Capsule 1: Main Navigation (Top Floating Pill) */}
         <nav
-          className={`w-full bg-white shadow-sm border border-slate-200/80 flex flex-col gap-1.5 transition-all duration-300 ${
-            isExpanded ? "rounded-[24px] p-2.5" : "rounded-[34px] p-2 items-center"
-          }`}
+          className={`w-full bg-white shadow-sm border border-slate-200/80 flex flex-col gap-1.5 transition-all duration-300 ${isExpanded ? "rounded-[24px] p-2.5" : "rounded-[34px] p-2 items-center"
+            }`}
           aria-label="Workspace tabs"
         >
           {nav.map((item) => {
@@ -274,19 +271,16 @@ export function AdminShell({
                 aria-current={isActive ? "page" : undefined}
                 title={!isExpanded ? item.label : undefined}
                 onClick={() => onPageChange(item.key)}
-                className={`group relative flex items-center transition-all duration-200 ${
-                  isExpanded
-                    ? `w-full px-3 py-2.5 rounded-xl gap-3 text-xs font-bold ${
-                        isActive
-                          ? "bg-[#1A365D] text-white shadow-md"
-                          : "text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
-                      }`
-                    : `w-11 h-11 rounded-full justify-center ${
-                        isActive
-                          ? "bg-[#1A365D] text-white shadow-md scale-105"
-                          : "text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
-                      }`
-                }`}
+                className={`group relative flex items-center transition-all duration-200 ${isExpanded
+                  ? `w-full px-3 py-2.5 rounded-xl gap-3 text-xs font-bold ${isActive
+                    ? "bg-[#1A365D] text-white shadow-md"
+                    : "text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
+                  }`
+                  : `w-11 h-11 rounded-full justify-center ${isActive
+                    ? "bg-[#1A365D] text-white shadow-md scale-105"
+                    : "text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
+                  }`
+                  }`}
               >
                 {/* Active Indicator on Expanded Rail */}
                 {isExpanded && isActive && (
@@ -303,11 +297,10 @@ export function AdminShell({
                 {/* Count Badge */}
                 {Boolean(item.count) && (
                   <span
-                    className={`min-w-4 h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${
-                      isExpanded
-                        ? isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"
-                        : "absolute -top-0.5 -right-0.5 bg-[#0D9488] text-white ring-2 ring-white"
-                    }`}
+                    className={`min-w-4 h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${isExpanded
+                      ? isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"
+                      : "absolute -top-0.5 -right-0.5 bg-[#0D9488] text-white ring-2 ring-white"
+                      }`}
                   >
                     {item.count}
                   </span>
@@ -327,9 +320,8 @@ export function AdminShell({
         {/* Capsule 2: Utilities (Notifications & Settings) */}
         <div
           ref={notificationsRef}
-          className={`w-full relative bg-white shadow-sm border border-slate-200/80 flex flex-col gap-1.5 transition-all duration-300 ${
-            isExpanded ? "rounded-[24px] p-2.5" : "rounded-[34px] p-2 items-center"
-          }`}
+          className={`w-full relative bg-white shadow-sm border border-slate-200/80 flex flex-col gap-1.5 transition-all duration-300 ${isExpanded ? "rounded-[24px] p-2.5" : "rounded-[34px] p-2 items-center"
+            }`}
         >
           {/* Notifications Button with Teal Dot */}
           <button
@@ -337,11 +329,10 @@ export function AdminShell({
             aria-label="Notifications"
             title={!isExpanded ? "Notifications" : undefined}
             onClick={() => setNotificationsOpen(!notificationsOpen)}
-            className={`group relative flex items-center transition-all duration-200 ${
-              isExpanded
-                ? "w-full px-3 py-2.5 rounded-xl gap-3 text-xs font-bold text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
-                : "w-11 h-11 rounded-full justify-center text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
-            }`}
+            className={`group relative flex items-center transition-all duration-200 ${isExpanded
+              ? "w-full px-3 py-2.5 rounded-xl gap-3 text-xs font-bold text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
+              : "w-11 h-11 rounded-full justify-center text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
+              }`}
           >
             <div className="relative shrink-0">
               <Bell size={19} strokeWidth={1.75} />
@@ -433,11 +424,10 @@ export function AdminShell({
             aria-label="Settings"
             title={!isExpanded ? "Settings & Preferences" : undefined}
             onClick={() => setSettingsModalOpen(true)}
-            className={`group relative flex items-center transition-all duration-200 ${
-              isExpanded
-                ? "w-full px-3 py-2.5 rounded-xl gap-3 text-xs font-bold text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
-                : "w-11 h-11 rounded-full justify-center text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
-            }`}
+            className={`group relative flex items-center transition-all duration-200 ${isExpanded
+              ? "w-full px-3 py-2.5 rounded-xl gap-3 text-xs font-bold text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
+              : "w-11 h-11 rounded-full justify-center text-slate-600 hover:text-[#1A365D] hover:bg-slate-100"
+              }`}
           >
             <Settings size={19} strokeWidth={1.75} className="shrink-0" />
             {isExpanded && <span className="truncate flex-1 text-left">Settings</span>}
@@ -453,19 +443,17 @@ export function AdminShell({
         {/* Capsule 3: Sign Out & Profile (Bottom Floating Pill) */}
         <div
           ref={profileRef}
-          className={`w-full relative bg-white shadow-sm border border-slate-200/80 flex flex-col gap-1.5 transition-all duration-300 ${
-            isExpanded ? "rounded-[24px] p-2.5" : "rounded-[34px] p-2 items-center"
-          }`}
+          className={`w-full relative bg-white shadow-sm border border-slate-200/80 flex flex-col gap-1.5 transition-all duration-300 ${isExpanded ? "rounded-[24px] p-2.5" : "rounded-[34px] p-2 items-center"
+            }`}
         >
           {/* User Profile Avatar / Trigger */}
           <button
             type="button"
             onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-            className={`group relative flex items-center transition-all duration-200 ${
-              isExpanded
-                ? "w-full p-1.5 rounded-xl gap-3 hover:bg-slate-50"
-                : "w-11 h-11 rounded-full justify-center"
-            }`}
+            className={`group relative flex items-center transition-all duration-200 ${isExpanded
+              ? "w-full p-1.5 rounded-xl gap-3 hover:bg-slate-50"
+              : "w-11 h-11 rounded-full justify-center"
+              }`}
           >
             <div className="w-9 h-9 rounded-full bg-[#1A365D] text-white font-bold text-xs flex items-center justify-center border-2 border-white shadow-sm hover:ring-2 hover:ring-[#0D9488] shrink-0">
               {initials}
@@ -547,11 +535,10 @@ export function AdminShell({
             aria-label="Sign out"
             title={!isExpanded ? "Sign out" : undefined}
             onClick={onSignOut}
-            className={`group relative flex items-center transition-all duration-200 ${
-              isExpanded
-                ? "w-full px-3 py-2 rounded-xl gap-3 text-xs font-bold text-slate-500 hover:text-red-600 hover:bg-red-50"
-                : "w-11 h-11 rounded-full justify-center text-slate-500 hover:text-red-600 hover:bg-red-50"
-            }`}
+            className={`group relative flex items-center transition-all duration-200 ${isExpanded
+              ? "w-full px-3 py-2 rounded-xl gap-3 text-xs font-bold text-slate-500 hover:text-red-600 hover:bg-red-50"
+              : "w-11 h-11 rounded-full justify-center text-slate-500 hover:text-red-600 hover:bg-red-50"
+              }`}
           >
             <LogOut size={18} strokeWidth={1.75} className="shrink-0" />
             {isExpanded && <span className="truncate flex-1 text-left">Sign Out</span>}
@@ -569,15 +556,13 @@ export function AdminShell({
       {/* 2. MAIN COLUMN WITH DYNAMIC LEFT MARGIN & TOPBAR                     */}
       {/* ==================================================================== */}
       <div
-        className={`min-h-screen min-w-0 flex flex-col transition-[margin] duration-300 ease-out ${
-          isExpanded ? "md:ml-[240px]" : "md:ml-[88px]"
-        }`}
+        className={`min-h-screen min-w-0 flex flex-col transition-[margin] duration-300 ease-out ${isExpanded ? "md:ml-[240px]" : "md:ml-[88px]"
+          }`}
       >
         {/* Top Header Bar */}
         <header
-          className={`sticky top-0 z-30 px-4 sm:px-8 py-4 flex items-center justify-between gap-4 transition-[background-color,backdrop-filter] duration-200 ${
-            headerScrolled ? "bg-[#F7F9FC]/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm" : "bg-[#F7F9FC]"
-          }`}
+          className={`sticky top-0 z-30 px-4 sm:px-8 py-4 flex items-center justify-between gap-4 transition-[background-color,backdrop-filter] duration-200 ${headerScrolled ? "bg-[#F7F9FC]/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm" : "bg-[#F7F9FC]"
+            }`}
         >
           {/* Left Greeting & Mobile Drawer Button */}
           <div className="flex items-center gap-3 min-w-0">
@@ -643,14 +628,12 @@ export function AdminShell({
         <button
           type="button"
           onClick={() => onPageChange("overview")}
-          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all ${
-            page === "overview" ? "text-[#1A365D]" : "text-slate-400 hover:text-slate-700"
-          }`}
+          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all ${page === "overview" ? "text-[#1A365D]" : "text-slate-400 hover:text-slate-700"
+            }`}
         >
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-              page === "overview" ? "bg-[#1A365D] text-white shadow-md scale-105" : "hover:bg-slate-100"
-            }`}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${page === "overview" ? "bg-[#1A365D] text-white shadow-md scale-105" : "hover:bg-slate-100"
+              }`}
           >
             <LayoutDashboard size={19} />
           </div>
@@ -661,14 +644,12 @@ export function AdminShell({
         <button
           type="button"
           onClick={() => onPageChange("tests")}
-          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all ${
-            page === "tests" ? "text-[#1A365D]" : "text-slate-400 hover:text-slate-700"
-          }`}
+          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all ${page === "tests" ? "text-[#1A365D]" : "text-slate-400 hover:text-slate-700"
+            }`}
         >
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-              page === "tests" ? "bg-[#1A365D] text-white shadow-md scale-105" : "hover:bg-slate-100"
-            }`}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${page === "tests" ? "bg-[#1A365D] text-white shadow-md scale-105" : "hover:bg-slate-100"
+              }`}
           >
             <Flag size={19} />
           </div>
@@ -679,14 +660,12 @@ export function AdminShell({
         <button
           type="button"
           onClick={() => onPageChange("bookings")}
-          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all ${
-            page === "bookings" ? "text-[#1A365D]" : "text-slate-400 hover:text-slate-700"
-          }`}
+          className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all ${page === "bookings" ? "text-[#1A365D]" : "text-slate-400 hover:text-slate-700"
+            }`}
         >
           <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-              page === "bookings" ? "bg-[#1A365D] text-white shadow-md scale-105" : "hover:bg-slate-100"
-            }`}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${page === "bookings" ? "bg-[#1A365D] text-white shadow-md scale-105" : "hover:bg-slate-100"
+              }`}
           >
             <CalendarDays size={19} />
           </div>
@@ -764,11 +743,10 @@ export function AdminShell({
                         onPageChange(item.key);
                         setMobileDrawerOpen(false);
                       }}
-                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all ${
-                        isActive
-                          ? "bg-[#1A365D] text-white border-[#1A365D] shadow-md"
-                          : "bg-slate-50/80 border-slate-200/70 text-slate-700 hover:bg-slate-100"
-                      }`}
+                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all ${isActive
+                        ? "bg-[#1A365D] text-white border-[#1A365D] shadow-md"
+                        : "bg-slate-50/80 border-slate-200/70 text-slate-700 hover:bg-slate-100"
+                        }`}
                     >
                       <div className={`p-2 rounded-xl ${isActive ? "bg-white/20 text-white" : "bg-white text-[#1A365D] shadow-sm"}`}>
                         {getNavIcon(item.key, isActive)}

@@ -26,10 +26,10 @@ import {
   Sparkles,
   Trash2,
   UserRound,
-  X,
   ZoomIn,
 } from "lucide-react";
 import { Modal, StatusPill } from "../../shared/components/ui";
+import { FullSizeImageViewer } from "../../shared/components/full-size-image-viewer";
 import type { AdminPermissionId, PatientRecord } from "../../shared/types";
 import type {
   CareRoutineStep,
@@ -350,40 +350,15 @@ export function PatientProfileDialog({
         </div>
       </div>
 
-      {/* Scalp Photo Lightbox Modal */}
-      {lightboxPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightboxPhoto(null)}>
-          <div className="relative max-w-2xl w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl p-4 text-white" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
-                <ZoomIn size={16} className="text-teal-400" />
-                <h4 className="font-semibold text-sm">Scalp Examination · {lightboxPhoto.angle} View</h4>
-              </div>
-              <button
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
-                onClick={() => setLightboxPhoto(null)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="my-4 flex items-center justify-center bg-black/50 rounded-xl overflow-hidden min-h-[360px] max-h-[500px]">
-              {lightboxPhoto.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={lightboxPhoto.url}
-                  alt={`${lightboxPhoto.angle} scalp view`}
-                  className="max-h-[480px] w-auto object-contain rounded-lg"
-                />
-              ) : (
-                <div className="text-slate-400 text-sm">No photo uploaded for this angle</div>
-              )}
-            </div>
-            <p className="text-xs text-slate-300 text-center m-0">
-              {lightboxPhoto.caption || `${lightboxPhoto.angle} angle submitted during clinical assessment.`}
-            </p>
-          </div>
-        </div>
-      )}
+      <FullSizeImageViewer
+        image={lightboxPhoto?.url ? {
+          src: lightboxPhoto.url,
+          alt: `Scalp examination · ${lightboxPhoto.angle} view`,
+          fileName: `scalp-${lightboxPhoto.angle.toLowerCase()}.jpg`,
+          caption: lightboxPhoto.caption || `${lightboxPhoto.angle} angle submitted during clinical assessment.`,
+        } : null}
+        onClose={() => setLightboxPhoto(null)}
+      />
 
       {/* Clinical Report Sheet Preview Modal */}
       {previewReport && (

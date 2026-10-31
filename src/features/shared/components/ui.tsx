@@ -49,8 +49,8 @@ export function ToggleSwitch({ checked, onChange, disabled, label }: { checked: 
 }
 
 export function Modal({
-  title, description, children, submitLabel = "Save changes", submitDisabled = false, className = "", hideCancel = false, onClose, onSubmit,
-}: { title: string; description: string; children: React.ReactNode; submitLabel?: string; submitDisabled?: boolean; className?: string; hideCancel?: boolean; onClose: () => void; onSubmit: () => void }) {
+  title, description, children, submitLabel = "Save changes", submitDisabled = false, submitVariant = "primary", className = "", hideCancel = false, onClose, onSubmit,
+}: { title: string; description: string; children: React.ReactNode; submitLabel?: string; submitDisabled?: boolean; submitVariant?: "primary" | "danger"; className?: string; hideCancel?: boolean; onClose: () => void; onSubmit: () => void }) {
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", close);
@@ -60,7 +60,7 @@ export function Modal({
   return createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={`modal max-h-[calc(100dvh-1.25rem)] overflow-y-auto sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-[20px] ${className}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div className="modal-head"><div><h2 id="modal-title">{title}</h2><p>{description}</p></div><button className="row-action" aria-label="Close dialog" onClick={onClose}><X size={17} /></button></div>
     <div className="modal-body">{children}</div>
-    <div className="modal-actions">{!hideCancel && <button className="button button-secondary" onClick={onClose}>Cancel</button>}<button className="button button-primary" disabled={submitDisabled} onClick={onSubmit}><Check size={14} />{submitLabel}</button></div>
+    <div className="modal-actions">{!hideCancel && <button className="button button-secondary" onClick={onClose}>Cancel</button>}<button className={`button ${submitVariant === "danger" ? "button-danger" : "button-primary"}`} disabled={submitDisabled} onClick={onSubmit}><Check size={14} />{submitLabel}</button></div>
   </section></div>, document.body);
 }
 

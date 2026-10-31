@@ -15,6 +15,7 @@ import type { HairTestRecord, PatientClinicalProfile, PatientReportNotification 
 
 type RegisteredPatient = {
   id: string;
+  patientCode: string;
   name: string;
   initials: string;
   email: string;
@@ -93,6 +94,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
           const name = typeof user.name === "string" && user.name.trim() ? user.name.trim() : "Unnamed patient";
           return [{
             id: String(user.id ?? ""),
+            patientCode: String(user.patient_code ?? ""),
             name,
             initials: name.split(/\s+/).map((part) => part[0] || "").join("").slice(0, 2).toUpperCase(),
             email: typeof user.email === "string" ? user.email : "",
@@ -120,7 +122,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
     const linkedPatient = registeredPatients.find((item) => item.id === patient.id)
       ?? registeredPatients.find((item) => normalizePatientName(item.name) === normalizePatientName(patient.name));
     if (linkedPatient) {
-      onOpenPatient(linkedPatient.id);
+      onOpenPatient(linkedPatient.patientCode || linkedPatient.id);
       return;
     }
     onToast("This review is sample data and is not linked to a live patient profile yet.");
@@ -202,7 +204,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
 
     {selectedBooking && <AppointmentDetailsDialog
       booking={selectedBooking}
-      patient={registeredPatients.find((patient) => patient.id === selectedBooking.patientId)
+      patient={registeredPatients.find((patient) => patient.id === selectedBooking.patientId || patient.patientCode === selectedBooking.patientId)
         ?? registeredPatients.find((patient) => normalizePatientName(patient.name) === normalizePatientName(selectedBooking.customer))}
       onClose={() => setSelectedBooking(null)}
       onOpenPatient={onOpenPatient}
@@ -380,12 +382,12 @@ function RegisteredPatients({ patients, totalCount, loadState, onOpenPatient }: 
       <table>
         <thead><tr><th>Patient</th><th>Contact</th><th>Age / gender</th><th>City</th><th>Registered</th><th /></tr></thead>
         <tbody>{patients.map((patient) => <tr key={patient.id}>
-          <td><button type="button" className="person text-left" onClick={() => onOpenPatient(patient.id)} aria-label={`Open ${patient.name} patient details`}><Avatar initials={patient.initials} /><span><span className="person-name block">{patient.name}</span><span className="person-sub block">{patient.id}</span></span></button></td>
+          <td><button type="button" className="person text-left" onClick={() => onOpenPatient(patient.patientCode || patient.id)} aria-label={`Open ${patient.name} patient details`}><Avatar initials={patient.initials} /><span><span className="person-name block">{patient.name}</span><span className="person-sub block">{patient.patientCode || patient.id}</span></span></button></td>
           <td><span className="block">{patient.email || "No email"}</span><span className="person-sub block">{patient.phone || "No phone"}</span></td>
           <td>{[patient.age ? `${patient.age} yrs` : "", patient.gender].filter(Boolean).join(" · ") || "—"}</td>
           <td>{patient.city || "—"}</td>
           <td>{formatRegistrationDate(patient.createdAt)}</td>
-          <td><button type="button" className="row-action" aria-label={`Open ${patient.name}`} onClick={() => onOpenPatient(patient.id)}><ArrowRight size={15} /></button></td>
+          <td><button type="button" className="row-action" aria-label={`Open ${patient.name}`} onClick={() => onOpenPatient(patient.patientCode || patient.id)}><ArrowRight size={15} /></button></td>
         </tr>)}</tbody>
       </table>
     </div> : <div className="empty-state">No registered patients yet.</div>}
@@ -443,8 +445,8 @@ function AppointmentDetailsDialog({ booking, patient, onClose, onOpenPatient, on
           </div>)}
         </div>
         {patient ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dcebe8] bg-[#f4faf9] p-3">
-          <div><p className="text-xs font-semibold text-[#1A365D]">Linked registered profile</p><p className="person-sub mt-1">{patient.name} · {patient.id}</p></div>
-          <button type="button" className="button button-primary button-small" onClick={() => onOpenPatient(patient.id)}>Open patient profile <ArrowRight size={13} /></button>
+          <div><p className="text-xs font-semibold text-[#1A365D]">Linked registered profile</p><p className="person-sub mt-1">{patient.name} · {patient.patientCode || patient.id}</p></div>
+          <button type="button" className="button button-primary button-small" onClick={() => onOpenPatient(patient.patientCode || patient.id)}>Open patient profile <ArrowRight size={13} /></button>
         </div> : <p className="rounded-xl bg-[#F7F9FC] p-3 text-xs leading-5 text-slate-500">No registered patient profile is linked to this appointment yet.</p>}
       </div>
       <div className="modal-actions flex-col sm:flex-row">

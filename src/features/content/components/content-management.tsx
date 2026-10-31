@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { Avatar, Modal, PageHeader, StatusPill, TableToolbar } from "../../shared/components/ui";
+import { FullSizeImageViewer, type ViewerImage } from "../../shared/components/full-size-image-viewer";
 import { useSessionState } from "../../shared/lib/use-session-state";
 import {
   initialBanners,
@@ -138,6 +139,7 @@ export function ContentManagement({
   const [statusFilter, setStatusFilter] = useState<string>("All status");
   const [query, setQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [imageToView, setImageToView] = useState<ViewerImage | null>(null);
 
   // Dialog States
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
@@ -146,6 +148,7 @@ export function ContentManagement({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [originalItemStatus, setOriginalItemStatus] = useState<Status | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; kind: ContentTab; title: string } | null>(null);
 
   // Form State for Create / Edit
   const [formTitle, setFormTitle] = useState("");
@@ -586,20 +589,31 @@ export function ContentManagement({
     }
   };
 
-  // Delete Item
+  // Require an explicit confirmation before removing app content.
   const handleDeleteItem = (id: string) => {
     if (!canEdit) return;
-    if (activeTab === "videos") {
-      setVideos((prev) => prev.filter((v) => v.id !== id));
+    const kind = activeTab;
+    const title = kind === "videos" ? videos.find((entry) => entry.id === id)?.title
+      : kind === "reviews" ? reviews.find((entry) => entry.id === id)?.patientName
+        : banners.find((entry) => entry.id === id)?.title;
+    if (title) setDeleteTarget({ id, kind, title });
+  };
+
+  const confirmDeleteItem = () => {
+    if (!deleteTarget || !canEdit) return;
+    const { id, kind, title } = deleteTarget;
+    if (kind === "videos") {
+      setVideos((prev) => prev.filter((item) => item.id !== id));
       onToast("Video removed from library.");
-    } else if (activeTab === "reviews") {
-      setReviews((prev) => prev.filter((r) => r.id !== id));
+    } else if (kind === "reviews") {
+      setReviews((prev) => prev.filter((item) => item.id !== id));
       onToast("Review removed from library.");
     } else {
-      setBanners((prev) => prev.filter((b) => b.id !== id));
+      setBanners((prev) => prev.filter((item) => item.id !== id));
       onToast("Banner removed from library.");
     }
-    onAudit("removed app content item", id);
+    onAudit("removed app content item", title);
+    setDeleteTarget(null);
   };
 
   return (
@@ -791,13 +805,9 @@ export function ContentManagement({
                 className="card p-0 min-w-0 overflow-hidden border border-slate-200 rounded-[22px] bg-white shadow-sm flex flex-col group hover:shadow-md transition-shadow"
               >
                 {/* Video Thumbnail with Play Overlay */}
-                <div className="relative aspect-video w-full bg-slate-900 overflow-hidden">
+                <button type="button" aria-label={`View ${video.title} thumbnail full size`} onClick={() => setImageToView({ src: video.thumbnail, alt: video.title, fileName: `${video.title}-thumbnail.jpg`, caption: "Video thumbnail" })} className="relative aspect-video w-full overflow-hidden bg-slate-900 text-left">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={video.thumbnail}
-                    alt={video.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
+                  <img src={video.thumbnail} alt={video.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                     <span className="w-10 h-10 rounded-full bg-white/90 text-teal-800 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                       <Play size={16} className="fill-teal-800 ml-0.5" />
@@ -809,7 +819,7 @@ export function ContentManagement({
                   <span className="absolute top-2 left-2">
                     <StatusPill status={video.status} />
                   </span>
-                </div>
+                </button>
 
                 {/* Content Details */}
                 <div className="p-3.5 flex flex-col flex-1 justify-between gap-2">
@@ -891,10 +901,10 @@ export function ContentManagement({
                   <tr key={v.id}>
                     <td>
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-8 rounded bg-slate-900 overflow-hidden flex-shrink-0 relative">
+                        <button type="button" aria-label={`View ${v.title} thumbnail full size`} onClick={() => setImageToView({ src: v.thumbnail, alt: v.title, fileName: `${v.title}-thumbnail.jpg`, caption: "Video thumbnail" })} className="relative h-8 w-12 flex-shrink-0 overflow-hidden rounded bg-slate-900">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover" />
-                        </div>
+                          <img src={v.thumbnail} alt={v.title} className="h-full w-full object-cover" />
+                        </button>
                         <div>
                           <strong className="text-xs text-slate-800 block truncate max-w-xs">{v.title}</strong>
                           <span className="text-[10px] text-slate-400">{v.creatorName}</span>
@@ -1059,21 +1069,19 @@ export function ContentManagement({
               key={banner.id}
               className="card p-0 min-w-0 overflow-hidden border border-slate-200 rounded-[22px] bg-white shadow-sm flex flex-col group hover:shadow-md transition-shadow"
             >
-              <div className="relative aspect-[21/9] w-full bg-slate-900 overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={banner.imageUrl}
-                  alt={banner.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex flex-col justify-end p-4 text-white">
+              <div className="relative aspect-[21/9] w-full overflow-hidden bg-slate-900">
+                <button type="button" aria-label={`View ${banner.title} image full size`} onClick={() => setImageToView({ src: banner.imageUrl, alt: banner.title, fileName: `${banner.title}-banner.jpg`, caption: "App banner" })} className="absolute inset-0 z-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={banner.imageUrl} alt={banner.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                </button>
+                <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-4 text-white">
                   <span className="self-start px-2 py-0.5 bg-teal-600 text-white text-[10px] font-bold rounded mb-1">
                     {banner.category}
                   </span>
                   <h3 className="font-bold text-sm text-white m-0 drop-shadow">{banner.title}</h3>
                   <p className="text-xs text-slate-200 line-clamp-1 mt-1 mb-0 drop-shadow">{banner.subtitle}</p>
                 </div>
-                <span className="absolute top-2 right-2">
+                <span className="pointer-events-none absolute right-2 top-2 z-20">
                   <StatusPill status={banner.status} />
                 </span>
               </div>
@@ -1270,10 +1278,10 @@ export function ContentManagement({
               {/* Real-time Preview Box */}
               {formMediaUrl && (
                 <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 flex items-center gap-3">
-                  <div className="w-16 h-12 rounded bg-slate-800 overflow-hidden flex-shrink-0">
+                  <button type="button" aria-label="View selected media full size" onClick={() => setImageToView({ src: formMediaUrl, alt: "Selected media preview", fileName: "selected-media.jpg", caption: "Selected app media" })} className="h-12 w-16 flex-shrink-0 overflow-hidden rounded bg-slate-800">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={formMediaUrl} alt="Preview" className="w-full h-full object-cover" />
-                  </div>
+                    <img src={formMediaUrl} alt="Preview" className="h-full w-full object-cover" />
+                  </button>
                   <div className="flex-1 min-w-0">
                     <span className="text-[11px] font-semibold text-slate-700 block truncate">Live Media Preview</span>
                     <span className="text-[10px] text-slate-400">Image loaded and ready</span>
@@ -1376,6 +1384,21 @@ export function ContentManagement({
           </div>
         </Modal>
       )}
+
+      {deleteTarget && <Modal
+        title={`Remove ${deleteTarget.kind === "videos" ? "video" : deleteTarget.kind === "reviews" ? "patient review" : "banner"}?`}
+        description="Please confirm before deleting this item from the app content library. This action cannot be undone."
+        submitLabel="Delete permanently"
+        submitVariant="danger"
+        onClose={() => setDeleteTarget(null)}
+        onSubmit={confirmDeleteItem}
+      >
+        <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-900">
+          <p className="font-semibold">{deleteTarget.title}</p>
+          <p className="mt-1 leading-5">The item will be removed from this content list immediately.</p>
+        </div>
+      </Modal>}
+      <FullSizeImageViewer image={imageToView} onClose={() => setImageToView(null)} />
     </div>
   );
 }

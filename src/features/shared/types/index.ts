@@ -44,6 +44,7 @@ export type OrderPaymentStatus = "Paid" | "Pending" | "Failed" | "Partially refu
 
 export interface PatientRecord {
   id: string;
+  patientCode?: string;
   name: string;
   initials: string;
   email: string;

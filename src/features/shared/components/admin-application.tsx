@@ -32,12 +32,10 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
   const [auth, setAuth] = useState<{ status: "checking" | "signed-out" | "signed-in"; admin?: AdminIdentity }>({ status: "checking" });
   const [actorEmail, setActorEmail] = useState("");
   const role: Role = auth.admin?.role === "super_admin" ? "super-admin" : "admin";
-  const previewAdminId = "";
   const [page, setPage] = useState<PageKey>(initialPage);
   const [bookingDate, setBookingDate] = useState(initialBookingDate);
   const [dashboardAnchor, setDashboardAnchor] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [adminRecords] = useSessionState<AdminRecord[]>("drhair-demo-admins", initialAdmins);
   const [features, setFeatures] = useSessionState<FeatureRecord[]>("drhair-demo-app-features", initialFeatures);
@@ -45,7 +43,6 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
   const [events, setEvents] = useSessionState<AuditEventRecord[]>("drhair-demo-audit", initialAuditEvents);
   const showToast = useCallback((message: string) => setToast(message), []);
   const closeToast = useCallback(() => setToast(""), []);
-  const onMobileOpenChange = useCallback((open: boolean) => setMobileOpen(open), []);
   const isOwner = false;
   const permissions = useMemo<AdminPermissionId[]>(() => role === "super-admin" ? superAdminPermissions : ["patients.view"], [role]);
   const visibleName = auth.admin?.name || actorEmail || "Admin";
@@ -146,7 +143,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
   }} />;
 
   return <>
-    <AdminShell role={role} page={page} globalSearch={globalSearch} panelAccess={panelAccess} permissions={permissions} isOwner={isOwner} userName={visibleName} previewAdminId={previewAdminId} adminOptions={[]} mobileOpen={mobileOpen} onRoleChange={() => {}} onAdminPreviewChange={() => {}} onPageChange={navigate} onSearchChange={setGlobalSearch} onMobileOpenChange={onMobileOpenChange} onSignOut={() => { void fetch("/api/auth/logout", { method: "POST" }); setAuth({ status: "signed-out" }); setPage("overview"); setGlobalSearch(""); }}>
+    <AdminShell role={role} page={page} showSearch={!initialPatientId} headerTitle={initialPatientId ? "Patient record" : undefined} headerSubtitle={initialPatientId ? `Patient ID ${initialPatientId} · Clinical care` : undefined} onHeaderBack={initialPatientId ? () => router.push("/patients") : undefined} globalSearch={globalSearch} panelAccess={panelAccess} permissions={permissions} isOwner={isOwner} userName={visibleName} onRoleChange={() => {}} onPageChange={navigate} onSearchChange={setGlobalSearch} onSignOut={() => { void fetch("/api/auth/logout", { method: "POST" }); setAuth({ status: "signed-out" }); setPage("overview"); setGlobalSearch(""); }}>
       {content}
     </AdminShell>
     {toast && <Toast message={toast} onClose={closeToast} />}
@@ -159,7 +156,7 @@ function Denied() {
 
 function AdminSessionSkeleton() {
   return <main className="min-h-screen w-full overflow-x-clip bg-[#F7F9FC]" aria-label="Loading admin workspace" aria-busy="true">
-    <aside aria-hidden="true" className="fixed inset-y-0 left-0 z-10 hidden w-[84px] flex-col items-center justify-between py-5 px-3 lg:flex">
+    <aside aria-hidden="true" className="fixed inset-y-0 left-3 z-10 hidden w-[84px] flex-col items-center justify-between py-5 px-3 md:flex lg:left-5">
       <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
       <div className="flex flex-col items-center gap-2 rounded-[34px] bg-white p-2 shadow-sm">
         {Array.from({ length: 6 }, (_, index) => <div key={index} className="h-11 w-11 animate-pulse rounded-full bg-slate-100" />)}
@@ -169,8 +166,8 @@ function AdminSessionSkeleton() {
         <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
       </div>
     </aside>
-    <section className="min-h-screen min-w-0 lg:ml-[88px]" aria-hidden="true">
-      <header className="flex h-[76px] items-center justify-between border-b border-slate-200/70 bg-[#F7F9FC]/90 px-4 sm:px-8">
+    <section className="min-h-screen min-w-0 md:ml-[104px] lg:ml-[112px]" aria-hidden="true">
+      <header className="flex h-[76px] items-center justify-between bg-[#F7F9FC]/90 px-4 sm:px-8">
         <div className="space-y-2"><div className="h-5 w-32 animate-pulse rounded bg-slate-200" /><div className="h-3 w-56 animate-pulse rounded bg-slate-100" /></div>
         <div className="flex items-center gap-3"><div className="hidden h-10 w-52 animate-pulse rounded-full bg-white sm:block" /><div className="h-10 w-28 animate-pulse rounded-full bg-slate-200" /></div>
       </header>

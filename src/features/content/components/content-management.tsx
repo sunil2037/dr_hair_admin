@@ -788,7 +788,7 @@ export function ContentManagement({
             {filteredVideos.map((video) => (
               <article
                 key={video.id}
-                className="card p-0 overflow-hidden border border-slate-200 rounded-xl bg-white shadow-sm flex flex-col group hover:shadow-md transition-shadow"
+                className="card p-0 min-w-0 overflow-hidden border border-slate-200 rounded-[22px] bg-white shadow-sm flex flex-col group hover:shadow-md transition-shadow"
               >
                 {/* Video Thumbnail with Play Overlay */}
                 <div className="relative aspect-video w-full bg-slate-900 overflow-hidden">
@@ -930,7 +930,7 @@ export function ContentManagement({
             {filteredReviews.map((rev) => (
               <article
                 key={rev.id}
-                className="card p-3.5 border border-slate-200 rounded-xl bg-white shadow-sm flex flex-col justify-between group hover:shadow-md transition-shadow"
+                className="card p-3.5 min-w-0 border border-slate-200 rounded-[22px] bg-white shadow-sm flex flex-col justify-between group hover:shadow-md transition-shadow"
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1057,7 +1057,7 @@ export function ContentManagement({
           {filteredBanners.map((banner) => (
             <article
               key={banner.id}
-              className="card p-0 overflow-hidden border border-slate-200 rounded-xl bg-white shadow-sm flex flex-col group hover:shadow-md transition-shadow"
+              className="card p-0 min-w-0 overflow-hidden border border-slate-200 rounded-[22px] bg-white shadow-sm flex flex-col group hover:shadow-md transition-shadow"
             >
               <div className="relative aspect-[21/9] w-full bg-slate-900 overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

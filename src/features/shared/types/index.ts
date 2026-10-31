@@ -35,7 +35,8 @@ export type PageKey =
   | "tests"
   | "bookings"
   | "team"
-  | "activity";
+  | "activity"
+  | "notifications";
 
 export type Status = "Active" | "Pending" | "Inactive" | "Published" | "Draft" | "Review" | "Completed" | "Cancelled" | "No show" | "Suspended";
 export type OrderFulfillmentStatus = "New" | "Preparing" | "Shipped" | "Delivered" | "Needs attention" | "Return requested" | "Cancelled" | "Refunded";

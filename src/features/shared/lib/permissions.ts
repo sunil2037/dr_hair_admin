@@ -23,6 +23,7 @@ export const navigationItems: NavigationItem[] = [
 export type PanelFeatureAccess = Record<string, boolean>;
 
 export function canAccessPage(role: Role, page: PageKey, panelAccess?: PanelFeatureAccess, permissions?: AdminPermissionId[]): boolean {
+  if (page === "notifications") return true;
   const item = navigationItems.find((entry) => entry.key === page);
   if (!item || (item.superAdminOnly && role !== "super-admin")) return false;
   if (role === "super-admin") return true;

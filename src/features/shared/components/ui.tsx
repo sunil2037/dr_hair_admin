@@ -35,13 +35,13 @@ export function Avatar({ initials }: { initials: string }) {
 export function PageHeader({
   eyebrow, title, description, action,
 }: { eyebrow?: string; title: string; description: string; action?: React.ReactNode }) {
-  return <div className="page-head max-[900px]:flex-col max-[900px]:items-stretch"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1 className="page-title">{title}</h1><p className="page-subtitle">{description}</p></div>{action && <div className="head-actions max-[900px]:w-full max-[900px]:justify-end">{action}</div>}</div>;
+  return <div className="page-head mx-auto flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0">{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1 className="page-title break-words">{title}</h1><p className="page-subtitle max-w-prose">{description}</p></div>{action && <div className="head-actions flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end [&>.button]:w-full sm:[&>.button]:w-auto">{action}</div>}</div>;
 }
 
 export function TableToolbar({
   value, onChange, placeholder = "Search...", right,
 }: { value: string; onChange: (value: string) => void; placeholder?: string; right?: React.ReactNode }) {
-  return <div className="toolbar"><div className="toolbar-left"><label className="input-search"><Search size={14} /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label></div><div className="toolbar-right">{right}</div></div>;
+  return <div className="toolbar flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="toolbar-left min-w-0 w-full sm:w-auto"><label className="input-search w-full min-w-0 sm:min-w-[210px]"><Search size={14} /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label></div><div className="toolbar-right flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{right}</div></div>;
 }
 
 export function ToggleSwitch({ checked, onChange, disabled, label }: { checked: boolean; onChange: () => void; disabled?: boolean; label: string }) {
@@ -49,18 +49,18 @@ export function ToggleSwitch({ checked, onChange, disabled, label }: { checked: 
 }
 
 export function Modal({
-  title, description, children, submitLabel = "Save changes", submitDisabled = false, className = "", onClose, onSubmit,
-}: { title: string; description: string; children: React.ReactNode; submitLabel?: string; submitDisabled?: boolean; className?: string; onClose: () => void; onSubmit: () => void }) {
+  title, description, children, submitLabel = "Save changes", submitDisabled = false, className = "", hideCancel = false, onClose, onSubmit,
+}: { title: string; description: string; children: React.ReactNode; submitLabel?: string; submitDisabled?: boolean; className?: string; hideCancel?: boolean; onClose: () => void; onSubmit: () => void }) {
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
   if (typeof document === "undefined") return null;
-  return createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={`modal ${className}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  return createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className={`modal max-h-[calc(100dvh-1.25rem)] overflow-y-auto sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-[20px] ${className}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div className="modal-head"><div><h2 id="modal-title">{title}</h2><p>{description}</p></div><button className="row-action" aria-label="Close dialog" onClick={onClose}><X size={17} /></button></div>
     <div className="modal-body">{children}</div>
-    <div className="modal-actions"><button className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={submitDisabled} onClick={onSubmit}><Check size={14} />{submitLabel}</button></div>
+    <div className="modal-actions">{!hideCancel && <button className="button button-secondary" onClick={onClose}>Cancel</button>}<button className="button button-primary" disabled={submitDisabled} onClick={onSubmit}><Check size={14} />{submitLabel}</button></div>
   </section></div>, document.body);
 }
 

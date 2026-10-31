@@ -20,8 +20,6 @@ import {
   Printer,
   Sparkles,
   Stethoscope,
-  Trash2,
-  UserCheck,
   UsersRound,
   ZoomIn,
 } from "lucide-react";
@@ -36,6 +34,11 @@ import { OrdersPage } from "./orders-page";
 
 type CareOperationsKind = "patients" | "bookings";
 type TriageFilter = "all" | "needs-regimen" | "pending-checkins" | "active-regimen";
+type BookingDateRange = "upcoming" | "past" | "all";
+const clinicSlotGroups = [
+  { label: "Morning · 10:00 AM–1:00 PM", slots: ["10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM"] },
+  { label: "Evening · 3:30–7:00 PM", slots: ["03:30 PM", "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM", "06:00 PM", "06:30 PM"] },
+];
 
 export function OperationsPage({
   kind,
@@ -43,15 +46,17 @@ export function OperationsPage({
   onToast,
   permissions = [],
   onAudit = () => {},
+  initialDateFilter = "",
 }: {
   kind: "patients" | "orders" | "bookings";
   globalSearch: string;
   onToast: (message: string) => void;
   permissions?: AdminPermissionId[];
   onAudit?: (action: string, target: string) => void;
+  initialDateFilter?: string;
 }) {
   if (kind === "orders") return <OrdersPage globalSearch={globalSearch} onToast={onToast} onAudit={onAudit} canExport={permissions.includes("commerce.export")} />;
-  return <CareOperationsPage kind={kind} globalSearch={globalSearch} onToast={onToast} permissions={permissions} onAudit={onAudit} />;
+  return <CareOperationsPage kind={kind} globalSearch={globalSearch} onToast={onToast} permissions={permissions} onAudit={onAudit} initialDateFilter={initialDateFilter} />;
 }
 
 function CareOperationsPage({
@@ -60,12 +65,14 @@ function CareOperationsPage({
   onToast,
   permissions,
   onAudit,
+  initialDateFilter,
 }: {
   kind: CareOperationsKind;
   globalSearch: string;
   onToast: (message: string) => void;
   permissions: AdminPermissionId[];
   onAudit: (action: string, target: string) => void;
+  initialDateFilter: string;
 }) {
   const router = useRouter();
   const [demoPatients] = useSessionState<PatientRecord[]>("drhair-demo-patients", initialPatients);
@@ -88,7 +95,8 @@ function CareOperationsPage({
   const [appointmentService, setAppointmentService] = useState("Clinic consultation");
   const [appointmentSource, setAppointmentSource] = useState<NonNullable<BookingRecord["source"]>>("Phone");
   const [statusFilter, setStatusFilter] = useState("All status");
-  const [visitTypeFilter] = useState<"All" | "Physical" | "Phone">("All");
+  const [bookingDateRange, setBookingDateRange] = useState<BookingDateRange>(initialDateFilter ? "all" : "upcoming");
+  const [bookingDateFilter, setBookingDateFilter] = useState(initialDateFilter);
   const [printingSlipBooking, setPrintingSlipBooking] = useState<BookingRecord | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [clinicHolidays, setClinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", [
@@ -100,6 +108,7 @@ function CareOperationsPage({
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentSlot, setAppointmentSlot] = useState("10:30 AM");
+  const [currentTime, setCurrentTime] = useState(0);
   const apiSearch = `${globalSearch} ${query}`.trim();
   const patientPage = patientPageState.search === apiSearch ? patientPageState.page : 1;
 
@@ -159,12 +168,15 @@ function CareOperationsPage({
       return;
     }
     if (clinicHolidays.includes(newHolidayDate)) {
-      onToast("This date is already listed as an official clinic holiday.");
+      onToast("Bookings are already closed for this date.");
       return;
     }
+    const affectedCount = bookings.filter((booking) => bookingDateKey(booking) === newHolidayDate && !["Cancelled", "Completed", "No show"].includes(booking.status)).length;
     setClinicHolidays((current) => [...current, newHolidayDate].sort());
     onAudit("added clinic holiday", newHolidayDate);
-    onToast(`Clinic holiday added: ${newHolidayDate}`);
+    onToast(affectedCount
+      ? `New bookings are blocked. ${affectedCount} existing appointment${affectedCount === 1 ? "" : "s"} remain; reschedule them below.`
+      : `New bookings are blocked for ${formatDateKey(newHolidayDate)}.`);
     setNewHolidayDate("");
   };
 
@@ -175,13 +187,14 @@ function CareOperationsPage({
   };
 
   const updateOpdStatus = (bookingId: string, nextOpdStatus: NonNullable<BookingRecord["opdStatus"]>) => {
+    const mainStatus = nextOpdStatus === "Completed" ? "Completed" : nextOpdStatus === "No show" ? "No show" : "Active";
     setBookings((current) =>
       current.map((item) => {
         if (item.id !== bookingId) return item;
-        const mainStatus = nextOpdStatus === "Completed" ? "Completed" : nextOpdStatus === "No show" ? "No show" : "Active";
         return { ...item, opdStatus: nextOpdStatus, status: mainStatus };
       })
     );
+    setDialog((current) => current?.id === bookingId ? { ...current, opdStatus: nextOpdStatus, status: mainStatus } : current);
     onAudit(`updated OPD status to ${nextOpdStatus}`, `Booking ${bookingId}`);
     onToast(`Patient OPD status updated: ${nextOpdStatus}`);
   };
@@ -228,15 +241,28 @@ function CareOperationsPage({
   }, [canViewClinicalPatients, patients, profiles, search, statusFilter, triageFilter]);
 
   const filteredBookings = useMemo(() => {
+    const now = new Date();
+    const todayKey = localDateKey(now);
     return bookings.filter(
       (item) => {
         const matchesSearch = `${item.customer} ${item.service} ${item.id} ${item.tokenNumber ?? ""} ${item.source ?? ""}`.toLowerCase().includes(search);
         const matchesStatus = statusFilter === "All status" || item.status === statusFilter || item.opdStatus === statusFilter;
-        const matchesType = visitTypeFilter === "All" || (visitTypeFilter === "Physical" ? item.type !== "Video Consultation" : item.source === "Phone" || item.source === "WhatsApp");
-        return matchesSearch && matchesStatus && matchesType;
+        const dateKey = bookingDateKey(item);
+        const matchesDate = bookingDateFilter ? dateKey === bookingDateFilter : bookingDateRange === "all" || (bookingDateRange === "upcoming" ? dateKey >= todayKey : dateKey < todayKey);
+        return matchesSearch && matchesStatus && matchesDate;
       }
-    );
-  }, [bookings, search, statusFilter, visitTypeFilter]);
+    ).sort((left, right) => {
+      const difference = bookingTimestamp(left) - bookingTimestamp(right);
+      return bookingDateFilter || bookingDateRange === "upcoming" ? difference : -difference;
+    });
+  }, [bookingDateFilter, bookingDateRange, bookings, search, statusFilter]);
+
+  const isSlotBooked = (date: string, slot: string) => {
+    if (!date || !slot) return false;
+    const startsAt = appointmentSlotStart(date, slot).valueOf();
+    return bookings.some((booking) => booking.id !== editingAppointmentId && booking.startsAt
+      && new Date(booking.startsAt).valueOf() === startsAt && !["Cancelled", "No show"].includes(booking.status));
+  };
 
   if (isPatient) {
     return <PatientDirectory
@@ -288,25 +314,27 @@ function CareOperationsPage({
       return;
     }
 
-    const day = new Date(appointmentDate);
+    const [year, month, dateNumber] = appointmentDate.split("-").map(Number);
+    const day = new Date(year, month - 1, dateNumber);
     if (day.getDay() === 0) {
       onToast("Sundays are clinic weekly off. Please select Mon–Sat.");
       return;
     }
     if (clinicHolidays.includes(appointmentDate)) {
-      onToast("Selected date is marked as an official clinic holiday.");
+      onToast("Bookings are closed for this date. Choose another date or reopen it in Manage availability.");
       return;
     }
 
-    const [time, period] = appointmentSlot.split(" ");
-    const [rawH, m] = time.split(":").map(Number);
-    let h = rawH;
-    if (period === "PM" && h !== 12) h += 12;
-    if (period === "AM" && h === 12) h = 0;
-    const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+    const start = appointmentSlotStart(appointmentDate, appointmentSlot);
 
     if (start.getTime() <= Date.now()) {
       onToast("Selected sitting slot has already passed.");
+      return;
+    }
+
+    const occupied = bookings.some((booking) => booking.id !== editingAppointmentId && booking.startsAt && new Date(booking.startsAt).getTime() === start.getTime() && !["Cancelled", "No show"].includes(booking.status));
+    if (occupied) {
+      onToast("This sitting slot is already booked. Choose another time.");
       return;
     }
 
@@ -335,16 +363,44 @@ function CareOperationsPage({
     setEditingAppointmentId(null);
     setAppointmentPatientId("");
     setAppointmentDate("");
-    setAppointmentService("");
+    setAppointmentSlot("10:30 AM");
+    setAppointmentService("Clinic consultation");
+    setAppointmentSource("Phone");
+    setBookingDateRange("upcoming");
+    setBookingDateFilter("");
+    setStatusFilter("All status");
+  };
+
+  const openAppointmentForm = () => {
+    setCurrentTime(Date.now());
+    setEditingAppointmentId(null);
+    setAppointmentPatientId("");
+    setAppointmentDate("");
+    setAppointmentSlot("10:30 AM");
+    setAppointmentService("Clinic consultation");
+    setAppointmentSource("Phone");
+    setShowAppointmentForm(true);
+  };
+
+  const closeAppointmentForm = () => {
+    setShowAppointmentForm(false);
+    setEditingAppointmentId(null);
+    setAppointmentPatientId("");
+    setAppointmentDate("");
+    setAppointmentSlot("10:30 AM");
+    setAppointmentService("Clinic consultation");
+    setAppointmentSource("Phone");
   };
 
   const rescheduleAppointment = (appointment: BookingRecord) => {
+    setCurrentTime(Date.now());
     setEditingAppointmentId(appointment.id);
     setAppointmentPatientId(appointment.patientId ?? "");
     setAppointmentService(appointment.service);
-    if (appointment.startsAt) {
-      const d = new Date(appointment.startsAt);
-      setAppointmentDate(d.toISOString().slice(0, 10));
+    const timestamp = bookingTimestamp(appointment);
+    if (timestamp) {
+      const d = new Date(timestamp);
+      setAppointmentDate(localDateKey(d));
       const hours = d.getHours();
       const mins = d.getMinutes();
       const period = hours >= 12 ? "PM" : "AM";
@@ -354,6 +410,7 @@ function CareOperationsPage({
     }
     setAppointmentSource(appointment.source ?? "Phone");
     setDialog(null);
+    setShowScheduleModal(false);
     setShowAppointmentForm(true);
   };
 
@@ -364,12 +421,12 @@ function CareOperationsPage({
         title={config.title}
         description={config.desc}
         action={!isPatient ? (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col justify-end gap-2 sm:w-auto sm:flex-row sm:flex-nowrap [&>.button]:w-full sm:[&>.button]:w-auto">
             <button className="button button-secondary" onClick={() => setShowScheduleModal(true)}>
               <CalendarDays size={14} />
-              Sitting Hours & Holidays
+              Manage availability
             </button>
-            <button className="button button-primary" onClick={() => setShowAppointmentForm(true)}>
+            <button className="button button-primary" onClick={openAppointmentForm}>
               <Plus size={14} />
               Add appointment
             </button>
@@ -385,25 +442,21 @@ function CareOperationsPage({
         ) : undefined}
       />
 
-      <div className="notice operations-notice">
+      {isPatient && <div className="notice operations-notice">
         <Eye size={14} />
-        <span>
-          {isPatient
-            ? "Private patient workspace for Dr. Jai Bansal. Changes and report notices stay in this browser preview until secure APIs are connected."
-            : "Physical visits with Dr. Jai Bansal. App requests appear here after synchronization is connected; the App row shown now is sample data."}
-        </span>
-      </div>
+        <span>Private patient workspace for Dr. Jai Bansal. Changes and report notices stay in this browser preview until secure APIs are connected.</span>
+      </div>}
 
       {isPatient ? <PatientSummary patients={patients} profiles={profiles} clinicalAccess={canViewClinicalPatients} /> : <BookingSummary bookings={bookings} />}
 
       <section className="card operations-table-card mt-4">
         <div className="section-row flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="card-title">{isPatient ? "Patient Triage & Clinical Charts" : "Visit schedule"}</h2>
+            <h2 className="card-title">{isPatient ? "Patient Triage & Clinical Charts" : "Appointment schedule"}</h2>
             <p className="card-note">
               {isPatient
                 ? "Click any patient row to open their clinical chart, inspect scalp photos, or prescribe regimens"
-                : "App requests and appointments arranged directly with the clinic"}
+                : "Switch between upcoming and past visits, or choose an exact date."}
             </p>
           </div>
 
@@ -452,6 +505,19 @@ function CareOperationsPage({
               </button>
             </div>
           )}
+          {!isPatient && <div className="booking-range-tabs w-full sm:w-auto" role="group" aria-label="Appointment date range">
+            {([
+              ["upcoming", "Upcoming"],
+              ["past", "Past"],
+              ["all", "All"],
+            ] as const).map(([range, label]) => <button
+              key={range}
+              type="button"
+              className={`flex-1 sm:flex-none ${bookingDateRange === range && !bookingDateFilter ? "active" : ""}`}
+              aria-pressed={bookingDateRange === range && !bookingDateFilter}
+              onClick={() => { setBookingDateRange(range); setBookingDateFilter(""); }}
+            >{label}</button>)}
+          </div>}
         </div>
 
         <TableToolbar
@@ -460,33 +526,45 @@ function CareOperationsPage({
           placeholder={
             isPatient
               ? canViewClinicalPatients ? "Search by patient name, email, ID, or diagnosis..." : "Find a patient by name or ID..."
-              : "Search patient, visit reason, or appointment ID..."
+              : "Search patient, reason, or ID..."
           }
           right={
-            <>
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+              {!isPatient && <label className="booking-date-filter min-w-0 w-full shrink-0 sm:w-auto sm:flex-none">
+                <span>Date</span>
+                <input
+                  className="min-w-0 flex-1 sm:flex-none sm:w-[132px]"
+                  type="date"
+                  aria-label="Show appointments on a specific date"
+                  value={bookingDateFilter}
+                  onChange={(event) => { setBookingDateFilter(event.target.value); setBookingDateRange("all"); }}
+                />
+              </label>}
               {(canViewClinicalPatients || !isPatient) && <select
-                className="period-select"
+                className="period-select min-w-0 flex-1 sm:flex-none"
                 aria-label="Filter by status"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option>All status</option>
-                {(isPatient ? ["Review", "Pending", "Completed"] : ["Pending", "Active", "Completed", "Cancelled", "No show"]).map((status) => (
+                {(isPatient ? ["Review", "Pending", "Completed"] : ["Pending", "Active", "Requested", "Confirmed", "Arrived", "In Consultation", "Completed", "Cancelled", "No show"]).map((status) => (
                   <option key={status}>{status}</option>
                 ))}
               </select>}
-              <button
-                className="filter-button"
+              {(query || statusFilter !== "All status" || bookingDateFilter || bookingDateRange !== "upcoming") && <button
+                className="filter-button min-w-[82px] flex-1 sm:flex-none"
                 onClick={() => {
                   setQuery("");
                   setStatusFilter("All status");
                   setTriageFilter("all");
+                  setBookingDateFilter("");
+                  setBookingDateRange("upcoming");
                 }}
               >
                 <Filter size={13} />
                 Reset
-              </button>
-            </>
+              </button>}
+            </div>
           }
         />
 
@@ -616,142 +694,14 @@ function CareOperationsPage({
               })}{filteredPatients.length === 0 && <tr><td colSpan={3}><div className="empty-state">No patient matches that name or ID.</div></td></tr>}</tbody>
             </table>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>OPD Token & Patient</th>
-                  <th>Visit Service & Chamber</th>
-                  <th>Scheduled Slot</th>
-                  <th>Source</th>
-                  <th>OPD Live Status</th>
-                  <th>Chamber Actions</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBookings.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50">
-                    <td>
-                      <div className="flex items-center gap-2.5">
-                        <span className="px-2 py-0.5 font-mono text-[11px] font-bold rounded bg-slate-100 text-slate-800 border border-slate-300">
-                          {item.tokenNumber ?? "OPD"}
-                        </span>
-                        <div className="person">
-                          <Avatar initials={item.customer.split(" ").map((part) => part[0]).join("")} />
-                          <div>
-                            <div className="person-name font-semibold">{item.customer}</div>
-                            <div className="person-sub text-[10px] text-slate-500">{item.id}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="font-semibold text-slate-800 text-xs">{item.service}</div>
-                      <div className="text-[11px] text-teal-700 flex items-center gap-1 mt-0.5 font-medium">
-                        <Building2 size={12} /> {item.room ?? "Room 101"} · Dr. Jai Bansal
-                      </div>
-                    </td>
-                    <td>
-                      <span className="text-xs font-medium text-slate-700">{item.date}</span>
-                    </td>
-                    <td>
-                      <span className="text-[11px] text-slate-500 font-medium">{item.source ?? "Clinic"}</span>
-                    </td>
-                    <td>
-                      {item.opdStatus === "Arrived" ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                          <UsersRound size={11} /> Waiting Room
-                        </span>
-                      ) : item.opdStatus === "In Consultation" ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full bg-teal-50 text-teal-800 border border-teal-200">
-                          <Stethoscope size={11} /> In Chamber (Dr. Bansal)
-                        </span>
-                      ) : item.opdStatus === "Completed" || item.status === "Completed" ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 size={11} /> Completed
-                        </span>
-                      ) : (
-                        <StatusPill status={item.status} />
-                      )}
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {item.opdStatus !== "Arrived" && item.opdStatus !== "In Consultation" && item.opdStatus !== "Completed" && item.status !== "Completed" && (
-                          <button
-                            onClick={() => updateOpdStatus(item.id, "Arrived")}
-                            className="text-[11px] px-2 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded border border-amber-200 font-semibold flex items-center gap-1"
-                            title="Mark patient present at clinic reception"
-                          >
-                            <UserCheck size={12} />
-                            Mark Arrived
-                          </button>
-                        )}
-
-                        {item.opdStatus === "Arrived" && (
-                          <button
-                            onClick={() => updateOpdStatus(item.id, "In Consultation")}
-                            className="text-[11px] px-2.5 py-1 bg-teal-600 text-white hover:bg-teal-700 rounded font-bold flex items-center gap-1 shadow-sm"
-                            title="Call patient into Dr. Jai Bansal's consultation chamber"
-                          >
-                            <Stethoscope size={12} />
-                            Call to Chamber
-                          </button>
-                        )}
-
-                        {item.opdStatus === "In Consultation" && (
-                          <button
-                            onClick={() => updateOpdStatus(item.id, "Completed")}
-                            className="text-[11px] px-2 py-1 bg-emerald-600 text-white hover:bg-emerald-700 rounded font-semibold flex items-center gap-1 shadow-sm"
-                            title="Complete in-person consultation"
-                          >
-                            <CheckCircle2 size={12} />
-                            Complete
-                          </button>
-                        )}
-
-                        {permissions.includes("patients.view") && (
-                          <button
-                            onClick={() => handleOpenPatientFromBooking(item)}
-                            className="text-[11px] px-2 py-1 bg-[#F0F7FF] text-[#1A365D] hover:bg-[#D6E0FC] rounded border border-[#D6E0FC] font-medium flex items-center gap-1"
-                            title="Open patient EMR and chart"
-                          >
-                            <FileText size={12} />
-                            Chart
-                          </button>
-                        )}
-
-                        <button
-                          onClick={() => setPrintingSlipBooking(item)}
-                          className="text-[11px] px-2 py-1 bg-slate-50 text-slate-700 hover:bg-slate-100 rounded border border-slate-200 font-medium flex items-center gap-1"
-                          title="Print OPD Consultation Slip"
-                        >
-                          <Printer size={12} />
-                          Slip
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      <button
-                        className="row-action"
-                        aria-label={`View ${item.id}`}
-                        onClick={() => setDialog(item)}
-                      >
-                        <ArrowRight size={15} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredBookings.length === 0 && (
-                  <tr>
-                    <td colSpan={7}>
-                      <div className="empty-state py-8 text-center text-slate-400 text-xs">
-                        No clinic appointments match this search.
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            <AppointmentList
+              bookings={filteredBookings}
+              onOpen={setDialog}
+              onAdvance={(booking) => {
+                const next = nextAppointmentAction(booking);
+                if (next) updateOpdStatus(booking.id, next.status);
+              }}
+            />
           )}
         </div>
 
@@ -759,9 +709,9 @@ function CareOperationsPage({
           <span>
             {isPatient
               ? `Showing ${filteredPatients.length} of ${patients.length} patient records`
-              : `${filteredBookings.length} clinic appointments`}
+              : `${filteredBookings.length} ${bookingDateFilter ? `appointment${filteredBookings.length === 1 ? "" : "s"} · ${formatDateKey(bookingDateFilter)}` : bookingDateRange === "past" ? "past appointment" : bookingDateRange === "upcoming" ? "upcoming appointment" : "appointment"}${!bookingDateFilter && filteredBookings.length !== 1 ? "s" : ""}`}
           </span>
-          <span>Trichology EMR Portal</span>
+          <span>{isPatient ? "Trichology EMR Portal" : "Demo preview · saved in this browser session"}</span>
         </div>
       </section>
 
@@ -770,10 +720,14 @@ function CareOperationsPage({
         <Modal
           title={`Clinic appointment · ${dialog.id}`}
           description={`${dialog.customer} · ${dialog.service}`}
-          submitLabel="Mark Completed"
-          submitDisabled={["Cancelled", "Completed", "No show"].includes(dialog.status)}
+          submitLabel={nextAppointmentAction(dialog)?.label ?? "Close"}
+          hideCancel
           onClose={() => setDialog(null)}
-          onSubmit={() => updateBookingStatus("Completed")}
+          onSubmit={() => {
+            const next = nextAppointmentAction(dialog);
+            if (next) updateOpdStatus(dialog.id, next.status);
+            else setDialog(null);
+          }}
         >
           <div className="space-y-3 text-xs">
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
@@ -799,23 +753,16 @@ function CareOperationsPage({
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                 <span className="text-slate-500">Status:</span>
-                <StatusPill status={dialog.status} />
+                <StatusPill status={bookingStatusLabel(dialog)} />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              {permissions.includes("patients.view") && <button
-                type="button"
-                onClick={() => handleOpenPatientFromBooking(dialog)}
-                className="p-2.5 rounded-lg border border-teal-300 bg-teal-50 text-teal-800 hover:bg-teal-100 font-semibold flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <FileText size={14} />
-                Open Medical Chart
-              </button>}
-              {dialog.status === "Pending" && <button type="button" onClick={() => updateBookingStatus("Active")} className="button button-secondary">Confirm visit</button>}
-              {dialog.status !== "Cancelled" && dialog.status !== "Completed" && <button type="button" onClick={() => updateBookingStatus("Cancelled")} className="button button-secondary">Cancel visit</button>}
-              {!["Cancelled", "Completed", "No show"].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("No show")} className="button button-secondary">Mark no show</button>}
-              {!["Cancelled", "Completed", "No show"].includes(dialog.status) && <button type="button" onClick={() => rescheduleAppointment(dialog)} className="button button-secondary">Reschedule</button>}
+            <div className="appointment-detail-actions [&>.button]:flex-[1_1_auto]">
+              {permissions.includes("patients.view") && <button type="button" onClick={() => handleOpenPatientFromBooking(dialog)} className="button button-secondary"><FileText size={14} /> Open patient chart</button>}
+              {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("Cancelled")} className="button button-danger">Cancel visit</button>}
+              {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("No show")} className="button button-secondary">Mark no-show</button>}
+              {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => rescheduleAppointment(dialog)} className="button button-secondary">Reschedule</button>}
+              <button type="button" onClick={() => setPrintingSlipBooking(dialog)} className="button button-secondary"><Printer size={14} /> Print slip</button>
             </div>
           </div>
         </Modal>
@@ -825,10 +772,8 @@ function CareOperationsPage({
           title={editingAppointmentId ? "Reschedule In-Clinic Appointment" : "Add Physical Clinic Appointment"}
           description="Book an in-person OPD consultation with Dr. Jai Bansal at Room 101."
           submitLabel={editingAppointmentId ? "Save New OPD Slot" : "Confirm Visit & Issue Token"}
-          onClose={() => {
-            setShowAppointmentForm(false);
-            setEditingAppointmentId(null);
-          }}
+          submitDisabled={!appointmentPatientId || !appointmentDate || !appointmentSlot || isSundayDateKey(appointmentDate) || clinicHolidays.includes(appointmentDate) || isSlotBooked(appointmentDate, appointmentSlot) || appointmentSlotStart(appointmentDate, appointmentSlot).getTime() <= currentTime}
+          onClose={closeAppointmentForm}
           onSubmit={createAppointment}
         >
           <div className="space-y-3">
@@ -876,7 +821,7 @@ function CareOperationsPage({
                 <span>Consultation Date *</span>
                 <input
                   type="date"
-                  min={new Date().toISOString().slice(0, 10)}
+                  min={localDateKey(new Date())}
                   value={appointmentDate}
                   onChange={(event) => setAppointmentDate(event.target.value)}
                 />
@@ -885,28 +830,17 @@ function CareOperationsPage({
               <label className="field">
                 <span>Doctor Sitting Slot *</span>
                 <select value={appointmentSlot} onChange={(event) => setAppointmentSlot(event.target.value)}>
-                  <optgroup label="Morning Session (10:00 AM – 01:00 PM)">
-                    <option value="10:00 AM">10:00 AM</option>
-                    <option value="10:30 AM">10:30 AM</option>
-                    <option value="11:00 AM">11:00 AM</option>
-                    <option value="11:30 AM">11:30 AM</option>
-                    <option value="12:00 PM">12:00 PM</option>
-                    <option value="12:30 PM">12:30 PM</option>
-                  </optgroup>
-                  <optgroup label="Evening Session (03:30 PM – 07:00 PM)">
-                    <option value="03:30 PM">03:30 PM</option>
-                    <option value="04:00 PM">04:00 PM</option>
-                    <option value="04:30 PM">04:30 PM</option>
-                    <option value="05:00 PM">05:00 PM</option>
-                    <option value="05:30 PM">05:30 PM</option>
-                    <option value="06:00 PM">06:00 PM</option>
-                    <option value="06:30 PM">06:30 PM</option>
-                  </optgroup>
+                  {clinicSlotGroups.map((group) => <optgroup label={group.label} key={group.label}>
+                    {group.slots.map((slot) => {
+                      const unavailable = Boolean(appointmentDate) && (isSlotBooked(appointmentDate, slot) || appointmentSlotStart(appointmentDate, slot).getTime() <= currentTime);
+                      return <option value={slot} key={slot} disabled={unavailable}>{slot}{isSlotBooked(appointmentDate, slot) ? " · Booked" : unavailable ? " · Passed" : ""}</option>;
+                    })}
+                  </optgroup>)}
                 </select>
               </label>
             </div>
 
-            {appointmentDate && new Date(appointmentDate).getDay() === 0 && (
+            {appointmentDate && isSundayDateKey(appointmentDate) && (
               <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2">
                 <AlertTriangle size={15} className="shrink-0 text-amber-600" />
                 <span><strong>Sunday Selected:</strong> Clinic is closed on Sundays (Weekly Off). Please select a slot between Monday and Saturday.</span>
@@ -916,105 +850,78 @@ function CareOperationsPage({
             {appointmentDate && clinicHolidays.includes(appointmentDate) && (
               <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2">
                 <AlertTriangle size={15} className="shrink-0 text-rose-600" />
-                <span><strong>Clinic Holiday:</strong> This date is marked as an official clinic holiday. Consultations will not be scheduled on this day.</span>
+                <span><strong>Date closed:</strong> New appointments cannot be added on this date. Reopen it in Manage availability to accept bookings again.</span>
               </div>
             )}
           </div>
         </Modal>
       )}
 
-      {/* Doctor Jai Bansal Sitting Hours & Clinic Holidays Modal */}
       {showScheduleModal && (
         <Modal
-          title="Dr. Jai Bansal's Clinic Sitting Schedule & Holidays"
-          description="Manage chamber timings, weekly off, and clinic holiday calendar."
+          title="Manage appointment availability"
+          description="Close a date to stop new bookings. Existing appointments stay visible until you reschedule them."
           submitLabel="Done"
+          hideCancel
+          className="availability-modal"
           onClose={() => setShowScheduleModal(false)}
           onSubmit={() => setShowScheduleModal(false)}
         >
-          <div className="space-y-4 text-xs">
-            {/* Sitting Hours Card */}
-            <div className="p-3 bg-[#F0F7FF] border border-[#D6E0FC] rounded-xl space-y-2">
-              <div className="flex items-center gap-2 font-bold text-[#1A365D] text-sm">
-                <Clock size={16} className="text-[#0D9488]" />
-                <span>Official Consultation Hours · Room 101 (Sector 29)</span>
-              </div>
-              <p className="text-slate-600">
-                Dr. Jai Bansal conducts physical trichology and hair graft consultations exclusively in two daily batches:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                  <span className="font-semibold text-teal-800 block text-[11px]">🌅 MORNING SITTING</span>
-                  <span className="text-[#1A365D] font-bold text-sm">10:00 AM – 01:00 PM</span>
-                  <span className="text-slate-500 block text-[10px] mt-0.5">Monday to Saturday · 6 slots (30 min)</span>
-                </div>
-                <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                  <span className="font-semibold text-teal-800 block text-[11px]">🌇 EVENING SITTING</span>
-                  <span className="text-[#1A365D] font-bold text-sm">03:30 PM – 07:00 PM</span>
-                  <span className="text-slate-500 block text-[10px] mt-0.5">Monday to Saturday · 7 slots (30 min)</span>
-                </div>
-              </div>
-              <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 font-medium">
-                🛑 <strong>Weekly Off:</strong> Sundays are strictly closed for routine physical consultations.
-              </div>
+          <div className="availability-content">
+            <div className="availability-hours">
+              <Clock size={15} />
+              <span>Clinic hours: Mon–Sat · 10:00 AM–1:00 PM and 3:30–7:00 PM</span>
+              <span className="availability-weekly-off ml-0 sm:ml-auto">Sunday closed</span>
             </div>
 
-            {/* Clinic Holidays Section */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                  <CalendarDays size={15} className="text-[#1A365D]" />
-                  <span>Official Clinic Holidays & Blocked Dates</span>
-                </h4>
-                <span className="text-slate-500 text-[11px]">{clinicHolidays.length} dates configured</span>
-              </div>
-
-              {/* Add New Holiday input */}
-              <div className="flex items-center gap-2">
+            <div className="availability-date-entry grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <label className="field">
+                <span>Date to close</span>
                 <input
                   type="date"
-                  min={new Date().toISOString().slice(0, 10)}
+                  min={localDateKey(new Date())}
                   value={newHolidayDate}
-                  onChange={(e) => setNewHolidayDate(e.target.value)}
-                  className="text-xs p-2 border border-slate-300 rounded-lg flex-1"
+                  onChange={(event) => setNewHolidayDate(event.target.value)}
                 />
-                <button
-                  type="button"
-                  onClick={addClinicHoliday}
-                  className="px-3 py-2 bg-[#1A365D] hover:bg-[#152a48] text-white font-medium rounded-lg text-xs flex items-center gap-1 transition-colors"
-                >
-                  <Plus size={13} />
-                  Add Holiday
-                </button>
-              </div>
-
-              {/* List of holidays */}
-              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                {clinicHolidays.map((holiday) => (
-                  <div
-                    key={holiday}
-                    className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-lg"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-800">
-                        {new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date(holiday))}
-                      </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-bold">
-                        Clinic Closed
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeClinicHoliday(holiday)}
-                      className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
-                      title="Remove holiday"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
+              </label>
+              <button type="button" className="button button-primary col-start-1 row-auto w-full justify-self-start sm:col-start-2 sm:row-start-1 sm:w-auto" disabled={!newHolidayDate || clinicHolidays.includes(newHolidayDate)} onClick={addClinicHoliday}>
+                <CalendarDays size={14} /> Close date
+              </button>
+              {newHolidayDate && <p className={bookings.some((booking) => bookingDateKey(booking) === newHolidayDate && !["Cancelled", "Completed", "No show"].includes(booking.status)) ? "availability-warning" : "availability-hint"}>
+                {clinicHolidays.includes(newHolidayDate)
+                  ? "Bookings are already closed for this date."
+                  : (() => {
+                    const count = bookings.filter((booking) => bookingDateKey(booking) === newHolidayDate && !["Cancelled", "Completed", "No show"].includes(booking.status)).length;
+                    return count ? `${count} existing appointment${count === 1 ? "" : "s"} will remain. Reschedule them below after closing the date.` : "No existing appointments on this date.";
+                  })()}
+              </p>}
             </div>
+
+            <div className="availability-list-heading">
+              <div><h3>Closed dates</h3><p>Reopen a date to accept appointments again.</p></div>
+              <span>{clinicHolidays.length}</span>
+            </div>
+
+            {clinicHolidays.length ? <div className="closed-date-list">
+              {clinicHolidays.map((closedDate) => {
+                const affected = bookings
+                  .filter((booking) => bookingDateKey(booking) === closedDate && !["Cancelled", "Completed", "No show"].includes(booking.status))
+                  .sort((left, right) => bookingTimestamp(left) - bookingTimestamp(right));
+                return <section className="closed-date-card" key={closedDate}>
+                  <div className="closed-date-heading flex-col items-start sm:flex-row sm:items-center">
+                    <div><strong>{formatDateKey(closedDate)}</strong><span>Closed to new bookings</span></div>
+                    <button type="button" className="button button-secondary button-small w-full sm:w-auto" onClick={() => removeClinicHoliday(closedDate)}>Reopen date</button>
+                  </div>
+                  {affected.length > 0 && <div className="closed-date-appointments">
+                    <p>{affected.length} existing appointment{affected.length === 1 ? "" : "s"} to review</p>
+                    {affected.map((booking) => <div className="closed-date-appointment flex-col items-start sm:flex-row sm:items-center" key={booking.id}>
+                      <span><strong>{booking.customer}</strong><small>{booking.tokenNumber ?? booking.id} · {formatBookingDateTime(booking)}</small></span>
+                      <button type="button" className="button button-secondary button-small w-full sm:w-auto" onClick={() => rescheduleAppointment(booking)}>Reschedule</button>
+                    </div>)}
+                  </div>}
+                </section>;
+              })}
+            </div> : <div className="empty-state">No dates are closed. Choose a date above to stop new bookings.</div>}
           </div>
         </Modal>
       )}
@@ -1237,6 +1144,138 @@ function BookingSummary({ bookings }: { bookings: BookingRecord[] }) {
   );
 }
 
+function localDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function bookingDateKey(booking: BookingRecord) {
+  if (booking.startsAt) {
+    const date = new Date(booking.startsAt);
+    if (!Number.isNaN(date.valueOf())) return localDateKey(date);
+  }
+  if (/\btoday\b/i.test(booking.date)) return localDateKey(new Date());
+  if (/\btomorrow\b/i.test(booking.date)) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return localDateKey(tomorrow);
+  }
+  const parsed = new Date(booking.date);
+  return Number.isNaN(parsed.valueOf()) ? "" : localDateKey(parsed);
+}
+
+function bookingTimestamp(booking: BookingRecord) {
+  if (booking.startsAt) {
+    const timestamp = new Date(booking.startsAt).valueOf();
+    if (!Number.isNaN(timestamp)) return timestamp;
+  }
+  const dateKey = bookingDateKey(booking);
+  if (!dateKey) return 0;
+  const date = new Date(`${dateKey}T00:00:00`);
+  const time = booking.date.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (time) {
+    let hour = Number(time[1]) % 12;
+    if (time[3].toUpperCase() === "PM") hour += 12;
+    date.setHours(hour, Number(time[2]), 0, 0);
+  }
+  return date.valueOf();
+}
+
+function formatDateKey(value: string) {
+  if (!value) return "";
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(new Date(year, month - 1, day, 12));
+}
+
+function formatBookingDateTime(booking: BookingRecord) {
+  const timestamp = bookingTimestamp(booking);
+  if (!timestamp) return booking.date;
+  const date = new Date(timestamp);
+  return `${new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short" }).format(date)} · ${new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" }).format(date)}`;
+}
+
+function bookingStatusLabel(booking: BookingRecord) {
+  if (["Cancelled", "Completed", "No show"].includes(booking.status)) return booking.status;
+  if (booking.opdStatus === "Arrived") return "Waiting room";
+  if (booking.opdStatus === "In Consultation") return "In consultation";
+  if (booking.opdStatus === "Requested") return booking.status === "Pending" ? "Needs confirmation" : "Requested";
+  return booking.opdStatus ?? booking.status;
+}
+
+function bookingStatusTone(booking: BookingRecord) {
+  if (booking.status === "Cancelled" || booking.status === "No show") return "closed";
+  if (booking.status === "Completed" || booking.opdStatus === "Completed") return "complete";
+  if (booking.opdStatus === "Arrived") return "waiting";
+  if (booking.opdStatus === "In Consultation") return "consulting";
+  if (booking.status === "Pending" || booking.opdStatus === "Requested") return "pending";
+  return "confirmed";
+}
+
+function appointmentSlotStart(dateKey: string, slot: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const [clock, period] = slot.split(" ");
+  const [rawHour, minute] = clock.split(":").map(Number);
+  let hour = rawHour % 12;
+  if (period === "PM") hour += 12;
+  return new Date(year, month - 1, day, hour, minute, 0, 0);
+}
+
+function isSundayDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day).getDay() === 0;
+}
+
+function nextAppointmentAction(booking: BookingRecord) {
+  if (["Completed", "Cancelled", "No show"].includes(booking.status) || booking.opdStatus === "Completed" || booking.opdStatus === "No show") return null;
+  if (booking.status === "Pending" && booking.opdStatus === "Requested") return { label: "Confirm visit", status: "Confirmed" as const };
+  if (booking.opdStatus === "Arrived") return { label: "Call to chamber", status: "In Consultation" as const };
+  if (booking.opdStatus === "In Consultation") return { label: "Complete visit", status: "Completed" as const };
+  return { label: "Mark arrived", status: "Arrived" as const };
+}
+
+function AppointmentList({ bookings, onOpen, onAdvance }: {
+  bookings: BookingRecord[];
+  onOpen: (booking: BookingRecord) => void;
+  onAdvance: (booking: BookingRecord) => void;
+}) {
+  if (bookings.length === 0) return <div className="empty-state py-8 text-center">No appointments match this date and filter.</div>;
+
+  return <div className="appointment-list">
+    {bookings.map((booking) => {
+      const primaryAction = nextAppointmentAction(booking);
+
+      return <article className="appointment-card grid-cols-1 min-[461px]:grid-cols-2 min-[761px]:grid-cols-[minmax(0,1fr)_minmax(150px,.8fr)_auto] min-[1101px]:grid-cols-[minmax(180px,1.05fr)_minmax(185px,1.25fr)_minmax(145px,.85fr)_minmax(115px,.6fr)_auto]" key={booking.id}>
+        <div className="appointment-card-patient min-[461px]:col-span-2 min-[761px]:col-span-1 min-[761px]:col-start-1 min-[761px]:row-start-1 min-[1101px]:col-auto min-[1101px]:row-auto">
+          <span className="appointment-token">{booking.tokenNumber ?? "OPD"}</span>
+          <Avatar initials={booking.customer.split(/\s+/).map((part) => part[0]).join("")} />
+          <div className="appointment-patient-copy">
+            <strong>{booking.customer}</strong>
+            <span>{booking.id}</span>
+          </div>
+        </div>
+        <div className="appointment-card-service min-[461px]:col-span-2 min-[761px]:col-span-1 min-[761px]:col-start-2 min-[761px]:row-start-1 min-[1101px]:col-auto min-[1101px]:row-auto">
+          <strong>{booking.service}</strong>
+          <span><Building2 size={12} />{booking.room ?? "Room 101"} · {booking.doctorName ?? "Dr. Jai Bansal"}</span>
+        </div>
+        <div className="appointment-card-time min-[461px]:col-start-1 min-[761px]:row-start-2 min-[1101px]:col-auto min-[1101px]:row-auto">
+          <strong>{formatBookingDateTime(booking)}</strong>
+          <span>{booking.source ?? "Clinic"} booking</span>
+        </div>
+        <div className="appointment-card-status min-[461px]:col-start-2 min-[461px]:justify-self-end min-[761px]:row-start-2 min-[1101px]:col-auto min-[1101px]:row-auto min-[1101px]:justify-self-stretch">
+          <span className={`booking-status-chip ${bookingStatusTone(booking)}`}>{bookingStatusLabel(booking)}</span>
+        </div>
+        <div className="appointment-card-actions flex-wrap justify-start border-t border-slate-100 pt-2 min-[461px]:col-span-2 min-[461px]:[&>.button]:flex-1 min-[761px]:col-span-1 min-[761px]:col-start-3 min-[761px]:row-span-2 min-[761px]:row-start-1 min-[761px]:flex-col min-[761px]:justify-center min-[761px]:border-t-0 min-[761px]:pt-0 min-[1101px]:col-auto min-[1101px]:row-auto min-[1101px]:flex-row min-[1101px]:justify-end min-[1101px]:[&>.button]:flex-none">
+          {primaryAction && <button type="button" className="button button-primary button-small" onClick={() => onAdvance(booking)}>{primaryAction.label}</button>}
+          <button type="button" className="button button-secondary button-small" onClick={() => onOpen(booking)}>Details</button>
+        </div>
+      </article>;
+    })}
+  </div>;
+}
+
 function ClinicalMetric({
   icon,
   label,
@@ -1258,7 +1297,7 @@ function ClinicalMetric({
   };
 
   return (
-    <article className="card p-3 border border-slate-200 rounded-xl bg-white shadow-sm flex flex-col justify-between">
+    <article className="card min-w-0 p-3 border border-slate-200 rounded-[22px] bg-white shadow-sm flex flex-col justify-between">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs text-slate-500 font-medium">{label}</span>
         <span className={`p-1.5 rounded-lg border ${tones[tone]}`}>{icon}</span>

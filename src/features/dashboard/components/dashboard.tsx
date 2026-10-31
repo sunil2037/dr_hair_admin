@@ -1,534 +1,518 @@
 "use client";
 
-import {
-  Activity, ArrowRight, ArrowUpRight, CalendarCheck2, CalendarDays,
-  ChevronDown, ClipboardCheck, Edit2, FileText, HeartPulse, MoreHorizontal,
-  Plus, ShieldCheck, Users, UsersRound,
-} from "lucide-react";
-import { useMemo, useState } from "react";
-import { StatusPill } from "../../shared/components/ui";
+import { Activity, ArrowRight, BellRing, CalendarCheck2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, FileText, HeartPulse, PackageCheck, UsersRound, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Avatar, PageHeader, StatusPill } from "../../shared/components/ui";
 import { useSessionState } from "../../shared/lib/use-session-state";
 import { admins as initialAdmins, bookings as initialBookings, orders as initialOrders, patients as initialPatients } from "../../shared/lib/demo-data";
 import { patientClinicalProfiles } from "../../operations/lib/patient-profiles";
 import { initialHairTests } from "../../operations/lib/hair-test-demo";
-import type { AdminRecord, AuditEventRecord, BookingRecord, PageKey, Role } from "../../shared/types";
+import type { AdminRecord, AuditEventRecord, PageKey, Role, Status } from "../../shared/types";
 import type { OrderRecord, PatientRecord } from "../../shared/types";
+import type { BookingRecord } from "../../shared/types";
 import type { HairTestRecord, PatientClinicalProfile, PatientReportNotification } from "../../operations/types";
 
-export function Dashboard({
-  role,
-  userName,
-  onNavigate,
-  permissions = [],
-  events = [],
-  admins = initialAdmins,
-}: {
+type RegisteredPatient = {
+  id: string;
+  name: string;
+  initials: string;
+  email: string;
+  phone: string;
+  age: number | null;
+  gender: string;
+  city: string;
+  createdAt: string;
+};
+
+export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissions = [], events = [], admins = initialAdmins, onAudit = () => {}, onToast = () => {}, anchor = "" }: {
   role: Role;
   userName: string;
-  onNavigate: (page: PageKey) => void;
+  onNavigate: (page: PageKey, options?: { bookingDate?: string; anchor?: string }) => void;
+  onOpenPatient: (patientId: string) => void;
   permissions?: string[];
   events?: AuditEventRecord[];
   admins?: AdminRecord[];
+  onAudit?: (action: string, target: string) => void;
+  onToast?: (message: string) => void;
+  anchor?: string;
 }) {
   const isSuper = role === "super-admin";
-  const [selectedMonth, setSelectedMonth] = useState("October");
-  const [dailyTarget, setDailyTarget] = useState(8500);
-  const [editingTarget, setEditingTarget] = useState(false);
-  const [targetInput, setTargetInput] = useState("8500");
-
   const [patients] = useSessionState<PatientRecord[]>("drhair-demo-patients", initialPatients);
-  const [bookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
+  const [bookings, setBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
+  const [clinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", ["2026-11-01", "2026-11-02", "2026-12-25", "2027-01-26"]);
+  const [selectedAppointmentDate, setSelectedAppointmentDate] = useState(() => startOfToday());
+  const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
+  const [registeredPatients, setRegisteredPatients] = useState<RegisteredPatient[]>([]);
+  const [registeredPatientTotal, setRegisteredPatientTotal] = useState(0);
+  const [registeredPatientsState, setRegisteredPatientsState] = useState<"loading" | "ready" | "error">("loading");
   const [orders] = useSessionState<OrderRecord[]>("drhair-demo-orders", initialOrders);
   const [profiles] = useSessionState<Record<string, PatientClinicalProfile>>("drhair-demo-patient-profiles", patientClinicalProfiles);
   const [hairTests] = useSessionState<HairTestRecord[]>("drhair-demo-hair-tests", initialHairTests);
   const [notifications] = useSessionState<PatientReportNotification[]>("drhair-demo-patient-notifications", []);
-
   const reviewPatients = patients.filter((patient) => patient.status === "Review" || patient.status === "Pending");
-  const currentDate = new Date();
-  const today = currentDate.toDateString();
-  const appointmentsToday = bookings.filter(
-    (b) => (b.startsAt ? new Date(b.startsAt).toDateString() === today : b.date.toLowerCase().includes("today")) &&
-      !["Cancelled", "No show"].includes(b.status)
-  );
-  const upcomingBooking = bookings
-    .filter((b) => ["Pending", "Active"].includes(b.status) && b.opdStatus !== "No show")
-    .filter((b) => !b.startsAt || new Date(b.startsAt).getTime() >= currentDate.getTime())
-    .sort((l, r) => (l.startsAt ? new Date(l.startsAt).getTime() : Number.MAX_SAFE_INTEGER) - (r.startsAt ? new Date(r.startsAt).getTime() : Number.MAX_SAFE_INTEGER))[0];
-
-  const ordersToFulfil = orders.filter((o) => ["New", "Pending", "Needs attention"].includes(o.status)).length;
-  const reportsReady = Object.entries(profiles).flatMap(([patientId, profile]) =>
-    profile.reports.filter(
-      (r) => r.status === "Ready" && !notifications.some((n) => n.patientId === patientId && n.reportId === r.id)
-    )
-  );
-
+  const today = new Date().toDateString();
+  const todayKey = localDateKey(startOfToday());
+  const appointmentsToday = bookings.filter((booking) => (booking.startsAt ? new Date(booking.startsAt).toDateString() === today : booking.date.toLowerCase().includes("today")) && !["Cancelled", "No show"].includes(booking.status));
+  const selectedDateKey = localDateKey(selectedAppointmentDate);
+  const selectedDateAppointments = bookings
+    .filter((booking) => !["Cancelled", "No show"].includes(booking.status))
+    .filter((booking) => {
+      const date = appointmentDate(booking);
+      return date !== null && localDateKey(date) === selectedDateKey;
+    })
+    .sort((left, right) => (appointmentDate(left)?.getTime() ?? 0) - (appointmentDate(right)?.getTime() ?? 0));
+  const ordersToFulfil = orders.filter((order) => ["New", "Pending", "Needs attention"].includes(order.status)).length;
+  const reportsReady = Object.entries(profiles).flatMap(([patientId, profile]) => profile.reports
+    .filter((report) => report.status === "Ready" && !notifications.some((notification) => notification.patientId === patientId && notification.reportId === report.id)));
+  const adminActive = admins.filter((admin) => admin.status === "Active").length;
   const permitted = (permission: string) => isSuper || permissions.includes(permission);
+  const canViewPatients = permitted("patients.view");
+  useEffect(() => {
+    const targetAnchor = anchor || window.location.hash.slice(1);
+    if (!targetAnchor) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(decodeURIComponent(targetAnchor))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [anchor]);
 
-  // Month days matrix matching image structure
-  const calendarDays = [
-    { day: 1, status: "done" },
-    { day: 2, status: "scheduled" },
-    { day: 3, status: "scheduled" },
-    { day: 4, status: "scheduled" },
-    { day: 5, status: "done" },
-    { day: 6, status: "none" },
-    { day: 7, status: "none" },
-    { day: 8, status: "scheduled" },
-    { day: 9, status: "scheduled" },
-    { day: 10, status: "scheduled" },
-    { day: 11, status: "none" },
-    { day: 12, status: "scheduled" },
-    { day: 14, status: "none" },
-    { day: 15, status: "scheduled" },
-    { day: 16, status: "none" },
-    { day: 17, status: "scheduled" },
-    { day: 18, status: "none" },
-    { day: 19, status: "scheduled" },
-    { day: 20, status: "none" },
-    { day: 21, status: "scheduled" },
-    { day: 22, status: "none" },
-    { day: 23, status: "scheduled" },
-    { day: 24, status: "none" },
-    { day: 25, status: "none" },
-    { day: 26, status: "scheduled" },
-    { day: 27, status: "current" },
-    { day: 28, status: "scheduled" },
-    { day: 29, status: "scheduled" },
-    { day: 30, status: "none" },
+  useEffect(() => {
+    if (!canViewPatients) return;
+    const controller = new AbortController();
+    const loadRegisteredPatients = async () => {
+      setRegisteredPatientsState("loading");
+      try {
+        const response = await fetch("/api/admin/users?page=1&limit=50", { cache: "no-store", signal: controller.signal });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error("Registered patients could not be loaded.");
+        const items: unknown[] = Array.isArray(result?.data?.items) ? result.data.items : [];
+        setRegisteredPatients(items.flatMap((item): RegisteredPatient[] => {
+          if (!item || typeof item !== "object") return [];
+          const user = item as Record<string, unknown>;
+          const name = typeof user.name === "string" && user.name.trim() ? user.name.trim() : "Unnamed patient";
+          return [{
+            id: String(user.id ?? ""),
+            name,
+            initials: name.split(/\s+/).map((part) => part[0] || "").join("").slice(0, 2).toUpperCase(),
+            email: typeof user.email === "string" ? user.email : "",
+            phone: typeof user.phone === "string" ? user.phone : "",
+            age: typeof user.age === "number" ? user.age : null,
+            gender: typeof user.gender === "string" ? user.gender : "",
+            city: typeof user.city === "string" ? user.city : "",
+            createdAt: typeof user.created_at === "string" ? user.created_at : "",
+          }];
+        }));
+        setRegisteredPatientTotal(typeof result?.data?.total === "number" ? result.data.total : items.length);
+        setRegisteredPatientsState("ready");
+      } catch {
+        if (!controller.signal.aborted) {
+          setRegisteredPatientTotal(0);
+          setRegisteredPatientsState("error");
+        }
+      }
+    };
+    void loadRegisteredPatients();
+    return () => controller.abort();
+  }, [canViewPatients]);
+
+  const openReviewPatient = (patient: PatientRecord) => {
+    const linkedPatient = registeredPatients.find((item) => item.id === patient.id)
+      ?? registeredPatients.find((item) => normalizePatientName(item.name) === normalizePatientName(patient.name));
+    if (linkedPatient) {
+      onOpenPatient(linkedPatient.id);
+      return;
+    }
+    onToast("This review is sample data and is not linked to a live patient profile yet.");
+  };
+
+  const advanceAppointment = (booking: BookingRecord) => {
+    const action = nextAppointmentAction(booking);
+    if (!action) return;
+    const status: Status = action.opdStatus === "Completed" ? "Completed" : "Active";
+    const updated = { ...booking, opdStatus: action.opdStatus, status };
+    setBookings((current) => current.map((item) => item.id === booking.id ? updated : item));
+    setSelectedBooking(updated);
+    onAudit(`updated OPD status to ${action.opdStatus}`, `${booking.id} · ${booking.customer}`);
+    onToast(`Appointment updated: ${action.opdStatus}`);
+  };
+
+  const openReviewQueue = () => document.getElementById("patient-reviews")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const activityRows = useMemo(() => (isSuper ? events : events.filter((event) => event.who === userName)).slice(0, 4), [events, isSuper, userName]);
+  const queueBars = [
+    ...(permitted("assessments.review") ? [{ label: "Patient reviews", count: reviewPatients.length, tone: "teal" }] : []),
+    ...(permitted("hair-tests.view") ? [{ label: "Hair tests awaiting review", count: hairTests.filter((test) => test.status === "In review").length, tone: "amber" }] : []),
+    ...(permitted("reports.share") ? [{ label: "Reports ready to share", count: reportsReady.length, tone: "blue" }] : []),
+    ...(permitted("bookings.manage") ? [{ label: "Clinic visits today", count: appointmentsToday.length, tone: "violet" }] : []),
+    ...(permitted("orders.manage") ? [{ label: "Orders needing action", count: ordersToFulfil, tone: "amber" }] : []),
   ];
+  const largestQueue = Math.max(1, ...queueBars.map((item) => item.count));
+  return <main className="page-wrap dashboard-bento mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+    <PageHeader eyebrow={isSuper ? "Super Admin · Clinical overview" : "Admin workspace"} title={`Welcome, ${userName}`} description="A current view of this clinic’s patient care, consultations, reports, and operations." />
+    <div className="notice mb-4 flex items-start gap-2.5"><Clock3 size={14} className="mt-0.5 shrink-0" /><span><strong>Preview workspace</strong> · Patient totals and directory load from the admin API. Appointment, assessment, order, and report queues use sample records saved in this browser session.</span></div>
+    <section className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Overview metrics">
+      <Kpi icon={<UsersRound size={16} />} label="Patient records" value={!permitted("patients.view") ? "—" : registeredPatientsState === "ready" ? String(registeredPatientTotal) : registeredPatientsState === "loading" ? "…" : "—"} trend={permitted("patients.view") ? "Live directory" : "No access"} foot={permitted("patients.view") ? registeredPatientsState === "error" ? "directory unavailable" : "registered patients" : "patient access is off"} onClick={permitted("patients.view") ? () => onNavigate("patients", { anchor: "registered-patients" }) : undefined} />
+      <Kpi icon={<ClipboardCheck size={16} />} label="Assessments to review" value={permitted("assessments.review") ? String(reviewPatients.length) : "—"} trend={permitted("assessments.review") ? "Current queue" : "No access"} foot={permitted("assessments.review") ? "Preview records" : "assessment access is off"} onClick={permitted("assessments.review") ? openReviewQueue : undefined} />
+      <Kpi icon={<CalendarCheck2 size={16} />} label="Clinic visits today" value={permitted("bookings.manage") ? String(appointmentsToday.length) : "—"} trend={permitted("bookings.manage") ? "Dr. Jai Bansal" : "No access"} foot={permitted("bookings.manage") ? "Preview schedule" : "appointment access is off"} onClick={permitted("bookings.manage") ? () => onNavigate("bookings", { bookingDate: todayKey }) : undefined} />
+      <Kpi icon={isSuper ? <HeartPulse size={16} /> : <PackageCheck size={16} />} label={isSuper ? "Reports ready to share" : "Orders to fulfil"} value={permitted(isSuper ? "reports.share" : "orders.manage") ? String(isSuper ? reportsReady.length : ordersToFulfil) : "—"} trend={permitted(isSuper ? "reports.share" : "orders.manage") ? "Current queue" : "No access"} foot={permitted(isSuper ? "reports.share" : "orders.manage") ? "Preview records" : "restricted for this account"} onClick={!isSuper && permitted("orders.manage") ? () => onNavigate("orders") : undefined} />
+    </section>
 
-  // Active patient regimens with real clinic patient data
-  const patientHabits = [
-    {
-      id: "reg-1",
-      patient: patients[0]?.name || "Sunil Sharma",
-      therapy: "Follicle Booster Therapy",
-      clinician: "Dr. Jai Bansal",
-      completed: 9,
-      total: 12,
-      avatarInitials: "SS",
-    },
-    {
-      id: "reg-2",
-      patient: patients[1]?.name || "Priya Patel",
-      therapy: "Laser Density & Scalp Detox",
-      clinician: "Dr. Nandini Rao",
-      completed: 6,
-      total: 10,
-      avatarInitials: "PP",
-    },
-    {
-      id: "reg-3",
-      patient: patients[2]?.name || "Vikram Sethi",
-      therapy: "PRP Cellular Maintenance",
-      clinician: "Dr. Vikram Sethi",
-      completed: 4,
-      total: 8,
-      avatarInitials: "VS",
-    },
-    {
-      id: "reg-4",
-      patient: patients[3]?.name || "Ananya Roy",
-      therapy: "DHT Blocker & Density Plan",
-      clinician: "Dr. Aisha Khan",
-      completed: 8,
-      total: 10,
-      avatarInitials: "AR",
-    },
-  ];
+    <section className="mb-4 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-12" aria-label="Appointments by date">
+      <AppointmentCalendar
+        bookings={permitted("bookings.manage") ? bookings : []}
+        selectedDate={selectedAppointmentDate}
+        onSelectDate={setSelectedAppointmentDate}
+        clinicHolidays={clinicHolidays}
+      />
+      <SelectedDateAppointments
+        bookings={permitted("bookings.manage") ? selectedDateAppointments : []}
+        date={selectedAppointmentDate}
+        onNavigate={() => onNavigate("bookings", { bookingDate: selectedDateKey })}
+        onOpenAppointment={setSelectedBooking}
+      />
+    </section>
 
-  return (
-    <div className="w-full space-y-6 animate-in fade-in duration-300">
-      {/* 2-Column Responsive Bento Grid (Exact Image Structure + Dr. Hair App Colors) */}
-      <div className="grid grid-cols-12 gap-6 items-stretch">
-        {/* ==================================================================== */}
-        {/* BENTO CARD 1: Hero Clinic Results (Top-Left, 7 Cols)                  */}
-        {/* ==================================================================== */}
-        <section
-          className="col-span-12 lg:col-span-7 bg-white rounded-[32px] p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden min-h-[350px] shadow-sm border border-slate-200/80"
-          aria-label="Clinic Results for Today"
-        >
-          {/* Header Row */}
-          <div className="flex items-start justify-between relative z-10">
-            <div>
-              <span className="text-[11px] font-bold tracking-wider uppercase text-[#0D9488]">
-                Today&apos;s Clinical Overview
-              </span>
-              <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#1A365D] leading-snug mt-0.5">
-                Clinic Hair Assessment<br />Results for Today
-              </h2>
-            </div>
+    {canViewPatients && <RegisteredPatients patients={registeredPatients} totalCount={registeredPatientTotal} loadState={registeredPatientsState} onOpenPatient={onOpenPatient} />}
 
-            {/* Top Right Navy Badge Button */}
-            <button
-              type="button"
-              onClick={() => onNavigate("patients")}
-              aria-label="View clinic details"
-              className="w-10 h-10 rounded-full bg-[#1A365D] text-white hover:bg-[#152c4d] flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-md"
-            >
-              <ArrowUpRight size={18} strokeWidth={2.5} className="text-[#0D9488]" />
-            </button>
-          </div>
+    <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-12" aria-label="Clinic operations">
+      <article className="card overflow-hidden rounded-[28px] lg:col-span-5">
+        <div className="card-head"><div><span className="eyebrow">Care operations</span><h2 className="card-title">Clinic work queues</h2><p className="card-note">Open work based on the current sample records</p></div></div>
+        {queueBars.length > 0 ? <div className="dashboard-queue-list">{queueBars.map((item) => <div className="dashboard-queue-row" key={item.label}>
+          <div className="dashboard-queue-heading"><span>{item.label}</span><strong>{item.count}</strong></div>
+          <div className="dashboard-queue-track"><span className={`dashboard-queue-fill ${item.tone}`} style={{ width: `${Math.max(item.count ? 9 : 0, item.count / largestQueue * 100)}%` }} /></div>
+        </div>)}</div> : <div className="empty-state">No operational access is assigned to this account.</div>}
+        {queueBars.length > 0 && <div className="chart-foot"><span><i className="legend-dot" />Queue size</span><span>Derived from demo records</span></div>}
+      </article>
+      <div className="grid grid-cols-1 gap-4 lg:col-span-7">
+      <article className="card overflow-hidden rounded-[28px]">
+        <div className="card-head"><div><h2 className="card-title">Recent activity</h2><p className="card-note">Saved panel actions and sample history</p></div><button className="row-action" aria-label="View activity" onClick={() => isSuper ? onNavigate("activity") : onNavigate(permitted("patients.view") ? "patients" : "overview")}><ArrowRight size={16} /></button></div>
+        {activityRows.length ? <div className="activity-list">{activityRows.map((event, index) => {
+          const Icon = event.type === "Orders" || event.type === "Commerce" ? PackageCheck : event.type === "Bookings" ? CalendarCheck2 : event.type === "Testing" ? FileText : event.type === "Access" ? UsersRound : event.type === "Feature" ? BellRing : Activity;
+          return <div className="activity-row" key={`${event.who}-${event.time}-${index}`}><div className="activity-icon"><Icon size={14} /></div><div className="activity-copy"><div className="activity-text"><strong>{event.who}</strong> {event.action} <strong>{event.target}</strong></div><div className="activity-time">{event.time} · {event.type}</div></div></div>;
+        })}</div> : <div className="empty-state">No recorded activity yet.</div>}
+      </article>
+      {isSuper && <article className="card overflow-hidden rounded-[28px]"><div className="section-row"><div><h2 className="card-title">Admin access snapshot</h2><p className="card-note">Staff access to Dr. Jai Bansal’s panel</p></div><button className="button button-secondary button-small" onClick={() => onNavigate("team")}>Manage team <ArrowRight size={13} /></button></div><div className="admin-snapshot-body"><div className="admin-snapshot-avatars">{admins.slice(0, 4).map((admin) => <span className="avatar" key={admin.id}>{admin.initials}</span>)}</div><span>{admins.length} admins · {adminActive} active · {admins.length - adminActive} inactive or suspended</span></div></article>}
+      </div>
+    </section>
 
-          {/* Graphic Area: Floating Glow Overlapping Circles with Dr. Hair Navy & Teal Accents */}
-          <div className="relative my-4 flex items-center justify-center sm:justify-end sm:mr-8 h-48 select-none">
-            {/* Navy OPD Time Badge */}
-            <div className="absolute left-4 sm:left-auto sm:right-56 top-4 z-20 w-20 h-20 rounded-full bg-[#1A365D] text-white flex flex-col items-center justify-center shadow-xl border-2 border-white">
-              <span className="text-sm font-bold leading-none text-[#0D9488]">2.30</span>
-              <span className="text-[10px] text-slate-300 mt-0.5">hours OPD</span>
-            </div>
+    {permitted("patients.view") && <section className="card" style={{ marginBottom: 16 }}>
+      <div id="patient-reviews" className="section-row scroll-mt-24"><div><h2 className="card-title">Patient reviews</h2><p className="card-note">Patients waiting for clinical attention</p></div><button className="button button-secondary button-small" onClick={() => onNavigate("patients", { anchor: "registered-patients" })}>Open patient records <ArrowRight size={13} /></button></div>
+      <div className="table-wrap"><table><thead><tr><th>Patient</th><th>Assessment summary</th><th>Submitted</th><th>Status</th><th /></tr></thead><tbody>{reviewPatients.slice(0, 4).map((patient) => { const linked = registeredPatients.find((item) => item.id === patient.id) ?? registeredPatients.find((item) => normalizePatientName(item.name) === normalizePatientName(patient.name)); return <tr key={patient.id}><td><button type="button" className="person text-left" onClick={() => openReviewPatient(patient)} aria-label={linked ? `Open ${patient.name} patient profile` : `${patient.name}; preview review not linked to a live profile`}><Avatar initials={patient.initials} /><span><span className="person-name block">{patient.name}</span><span className="person-sub block">{patient.id}</span></span></button></td><td>{patient.assessment}</td><td>{patient.submitted}</td><td><StatusPill status={patient.status} /></td><td><button className="row-action" aria-label={linked ? `Open ${patient.name} profile` : `Check ${patient.name} review link`} onClick={() => openReviewPatient(patient)}><ArrowRight size={15} /></button></td></tr>;})}{reviewPatients.length === 0 && <tr><td colSpan={5}><div className="empty-state">No patients are waiting for review.</div></td></tr>}</tbody></table></div>
+    </section>}
 
-            {/* Large Teal Glowing Circle (Consultations / Patients) */}
-            <div className="relative z-10 w-44 h-44 rounded-full bg-gradient-to-br from-[#0D9488] to-[#047481] text-white flex flex-col items-center justify-center shadow-[0_0_40px_rgba(13,148,136,0.35)] border-4 border-white">
-              <span className="text-xl font-black leading-tight">1,875</span>
-              <span className="text-[10px] font-bold text-teal-100 uppercase tracking-wider">consults</span>
-            </div>
+    {selectedBooking && <AppointmentDetailsDialog
+      booking={selectedBooking}
+      patient={registeredPatients.find((patient) => patient.id === selectedBooking.patientId)
+        ?? registeredPatients.find((patient) => normalizePatientName(patient.name) === normalizePatientName(selectedBooking.customer))}
+      onClose={() => setSelectedBooking(null)}
+      onOpenPatient={onOpenPatient}
+      onAdvance={() => advanceAppointment(selectedBooking)}
+      onManage={() => { const date = appointmentDate(selectedBooking); setSelectedBooking(null); onNavigate("bookings", { bookingDate: date ? localDateKey(date) : undefined }); }}
+    />}
 
-            {/* Overlapping Navy Glowing Circle (Hair Tests) */}
-            <div className="absolute right-24 -bottom-2 z-15 w-36 h-36 rounded-full bg-gradient-to-br from-[#1A365D] to-[#0f2442] text-white flex flex-col items-center justify-center shadow-[0_0_35px_rgba(26,54,93,0.3)] border-4 border-white">
-              <span className="text-lg font-black leading-tight text-white">850</span>
-              <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">tests</span>
-            </div>
-          </div>
+  </main>;
+}
 
-          {/* Bottom Left Legend Items */}
-          <div className="space-y-2 relative z-10 pt-2 border-t border-slate-100">
-            <div className="flex items-center gap-3 text-xs font-semibold text-slate-700">
-              <span className="w-5 h-2 rounded-full bg-[#0D9488]" />
-              <span>Consultations completed (1,875)</span>
-            </div>
-            <div className="flex items-center gap-3 text-xs font-semibold text-slate-700">
-              <span className="w-5 h-2 rounded-full bg-[#1A365D]" />
-              <span>Hair tests submitted (850)</span>
-            </div>
-            <div className="flex items-center gap-3 text-xs font-semibold text-slate-700">
-              <span className="w-5 h-2 rounded-full bg-slate-400" />
-              <span>Active clinic OPD time (2.30h)</span>
-            </div>
-          </div>
-        </section>
+function Kpi({ icon, label, value, trend, foot, onClick }: { icon: React.ReactNode; label: string; value: string; trend: string; foot: string; onClick?: () => void }) {
+  const content = <><div className="kpi-top"><span className="kpi-label">{label}</span><span className="kpi-icon">{icon}</span></div><div className="kpi-value">{value}</div><div className="kpi-foot"><span className={onClick ? "positive" : "negative"}>{trend}</span><span>{foot}</span></div></>;
+  if (!onClick) return <article className="card kpi-card">{content}</article>;
+  return <button type="button" className="card kpi-card w-full text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0D9488]" onClick={onClick} aria-label={`${label}: ${value}. ${foot}. Open related section.`}>{content}</button>;
+}
 
-        {/* ==================================================================== */}
-        {/* BENTO CARD 2: Appointment Calendar (Top-Right, 5 Cols)               */}
-        {/* ==================================================================== */}
-        <section
-          className="col-span-12 lg:col-span-5 bg-[#1A365D] text-white rounded-[32px] p-6 sm:p-8 flex flex-col justify-between shadow-sm"
-          aria-label="Appointment Schedule"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-white/10">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#0D9488]">
-                OPD Schedule
-              </span>
-              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white">
-                Your Clinic Days
-              </h2>
-            </div>
-            <div className="relative">
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="appearance-none bg-transparent text-slate-200 font-semibold text-xs pr-5 outline-none cursor-pointer hover:text-white"
-              >
-                <option value="October" className="bg-[#1A365D]">October</option>
-                <option value="November" className="bg-[#1A365D]">November</option>
-                <option value="December" className="bg-[#1A365D]">December</option>
-              </select>
-              <ChevronDown size={14} className="absolute right-0 top-0.5 text-slate-400 pointer-events-none" />
-            </div>
-          </div>
+function AppointmentCalendar({ bookings, selectedDate, onSelectDate, clinicHolidays }: {
+  bookings: BookingRecord[];
+  selectedDate: Date;
+  onSelectDate: (date: Date) => void;
+  clinicHolidays: string[];
+}) {
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const monthTitle = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(month);
+  const offset = (month.getDay() + 6) % 7;
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const dayCells = [...Array(offset).fill(null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
+  const bookingsByDate = useMemo(() => {
+    const byDate = new Map<string, BookingRecord[]>();
+    bookings.filter((booking) => !["Cancelled", "No show"].includes(booking.status)).forEach((booking) => {
+      const date = appointmentDate(booking);
+      if (!date) return;
+      const key = localDateKey(date);
+      byDate.set(key, [...(byDate.get(key) ?? []), booking]);
+    });
+    return byDate;
+  }, [bookings]);
+  const selectedKey = localDateKey(selectedDate);
+  const todayKey = localDateKey(new Date());
 
-          {/* Weekday Letters */}
-          <div className="grid grid-cols-7 text-center text-[11px] font-bold text-slate-400 tracking-wider py-2">
-            <span>M</span>
-            <span>T</span>
-            <span>W</span>
-            <span>T</span>
-            <span>F</span>
-            <span>S</span>
-            <span>S</span>
-          </div>
+  const moveMonth = (change: number) => {
+    const next = new Date(month.getFullYear(), month.getMonth() + change, 1);
+    setMonth(next);
+    const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    onSelectDate(new Date(next.getFullYear(), next.getMonth(), Math.min(selectedDate.getDate(), lastDay)));
+  };
 
-          {/* Days Matrix */}
-          <div className="grid grid-cols-7 gap-y-2 text-center text-xs font-medium py-1">
-            {calendarDays.map((item, index) => {
-              if (item.status === "done") {
-                return (
-                  <div key={index} className="flex items-center justify-center">
-                    <span className="w-8 h-8 rounded-full bg-[#0D9488] text-white font-bold flex items-center justify-center shadow-sm">
-                      {item.day}
-                    </span>
-                  </div>
-                );
-              }
-              if (item.status === "current") {
-                return (
-                  <div key={index} className="flex items-center justify-center">
-                    <span className="w-8 h-8 rounded-full border-2 border-white text-white font-bold flex items-center justify-center">
-                      {item.day}
-                    </span>
-                  </div>
-                );
-              }
-              if (item.status === "scheduled") {
-                return (
-                  <div key={index} className="flex items-center justify-center">
-                    <span className="w-8 h-8 rounded-full text-slate-200 hover:bg-white/10 flex items-center justify-center transition-colors">
-                      {item.day}
-                    </span>
-                  </div>
-                );
-              }
-              return (
-                <div key={index} className="flex items-center justify-center text-slate-400">
-                  <span className="w-8 h-8 flex items-center justify-center">
-                    {item.day}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+  const returnToToday = () => {
+    const today = startOfToday();
+    setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    onSelectDate(today);
+  };
 
-          {/* Calendar Foot Legend */}
-          <div className="flex items-center justify-between text-[11px] text-slate-300 pt-3 border-t border-white/10 font-medium">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full border border-slate-300" />
-              Current day
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#0D9488]" />
-              Completed
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
-              Scheduled
-            </span>
-          </div>
-        </section>
-
-        {/* ==================================================================== */}
-        {/* ROW 2: BOTTOM SECTION                                                */}
-        {/* ==================================================================== */}
-
-        {/* Left Stacked Column: (4 Cols - 2 cards stacked) */}
-        <div className="col-span-12 lg:col-span-5 xl:col-span-4 space-y-6">
-          {/* BENTO CARD 3: Hair Tests Gauge Card */}
-          <section
-            className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200/80 flex items-center justify-between"
-            aria-label="Hair Tests Goal"
-          >
-            <div className="space-y-3">
-              <div>
-                <h3 className="text-base font-bold text-[#1A365D] leading-tight">
-                  Hair Tests for Today
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Keep clinical queue on track
-                </p>
-              </div>
-
-              {/* Change Goal Button */}
-              {editingTarget ? (
-                <div className="flex items-center gap-1.5 pt-1">
-                  <input
-                    type="number"
-                    value={targetInput}
-                    onChange={(e) => setTargetInput(e.target.value)}
-                    className="w-20 px-2 py-1 text-xs border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-[#1A365D]"
-                  />
-                  <button
-                    onClick={() => {
-                      setDailyTarget(parseInt(targetInput, 10) || 8500);
-                      setEditingTarget(false);
-                    }}
-                    className="px-2 py-1 bg-[#1A365D] text-white text-[10px] rounded-md font-bold"
-                  >
-                    Save
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditingTarget(true)}
-                  className="flex items-center gap-2 text-xs font-bold text-[#1A365D] hover:text-[#0D9488] transition-colors"
-                >
-                  <span>Change Target</span>
-                  <span className="w-6 h-6 rounded-full bg-[#0D9488] text-white flex items-center justify-center shadow-sm">
-                    <Edit2 size={11} strokeWidth={2.5} />
-                  </span>
-                </button>
-              )}
-            </div>
-
-            {/* Circular Gauge Meter (SVG Arc with Teal Gradient) */}
-            <div className="relative w-28 h-28 flex items-center justify-center shrink-0">
-              <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="#E2E8F0"
-                  strokeWidth="8"
-                  strokeDasharray="200"
-                  strokeDashoffset="50"
-                  strokeLinecap="round"
-                />
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="url(#tealArcGrad)"
-                  strokeWidth="8"
-                  strokeDasharray="200"
-                  strokeDashoffset="85"
-                  strokeLinecap="round"
-                />
-                <defs>
-                  <linearGradient id="tealArcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#1A365D" />
-                    <stop offset="100%" stop-color="#0D9488" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              {/* Inside Center Text */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-[10px] text-slate-400 font-medium">Goal</span>
-                <span className="text-sm font-extrabold text-[#1A365D] leading-tight">
-                  {dailyTarget.toLocaleString()}
-                </span>
-                <span className="text-[9px] font-bold text-[#0D9488] mt-0.5">5,201 tests</span>
-              </div>
-            </div>
-          </section>
-
-          {/* BENTO CARD 4: Treatment Care Plans Progress */}
-          <section
-            className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200/80 space-y-4"
-            aria-label="Treatment Regimen Progress"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-bold text-[#1A365D]">
-                  Clinical Treatment Plans
-                </h3>
-                <p className="text-xs text-slate-400">Active patient compliance</p>
-              </div>
-              <div className="text-right">
-                <span className="text-base font-extrabold text-[#1A365D]">68%</span>
-                <p className="text-[11px] text-[#0D9488] font-bold">Completed</p>
-              </div>
-            </div>
-
-            {/* Progress Slider Track with Thumb Pill */}
-            <div className="space-y-2">
-              <div className="relative w-full h-8 flex items-center">
-                {/* Track Line */}
-                <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full bg-[#1A365D] rounded-full w-[68%]" />
-                </div>
-                {/* Floating Thumb Pill */}
-                <div className="absolute left-[54%] -top-1 px-3 py-1 rounded-full bg-[#1A365D] text-white text-[11px] font-bold shadow-md">
-                  68.2%
-                </div>
-              </div>
-
-              {/* Min & Max Labels */}
-              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500">
-                <span>58 Active</span>
-                <span>50 Goal</span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* BENTO CARD 5: Active Patient Regimens (Habits List - 8 Cols) */}
-        <section
-          className="col-span-12 lg:col-span-7 xl:col-span-8 bg-white rounded-[32px] p-6 sm:p-8 shadow-sm border border-slate-200/80 flex flex-col justify-between"
-          aria-label="Active Patient Regimens"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-            <div>
-              <span className="text-[11px] font-bold tracking-wider uppercase text-[#0D9488]">
-                Patient Care Flow
-              </span>
-              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-[#1A365D] mt-0.5">
-                Active Patient Regimens
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigate("patients")}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#1A365D] text-white text-xs font-semibold hover:bg-[#152c4d] transition-all shadow-sm active:scale-95"
-            >
-              <span>Add New</span>
-              <Plus size={14} />
-            </button>
-          </div>
-
-          {/* List of Real Patient Regimens */}
-          <div className="divide-y divide-slate-100">
-            {patientHabits.map((item) => (
-              <div
-                key={item.id}
-                className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group hover:bg-slate-50/70 rounded-2xl px-2 transition-colors"
-              >
-                {/* Left: Patient Avatar & Therapy */}
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-[#1A365D] text-white flex items-center justify-center shrink-0 font-bold text-xs shadow-sm">
-                    {item.avatarInitials}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-xs sm:text-sm font-bold text-[#1A365D] truncate">
-                      {item.therapy}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 truncate">
-                      Patient: <strong className="text-slate-800">{item.patient}</strong> · {item.clinician}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right: Sessions Completed Battery Dots & More */}
-                <div className="flex items-center justify-between sm:justify-end gap-5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-600 font-medium">
-                      Sessions: <strong className="text-[#1A365D]">{item.completed}/{item.total}</strong>
-                    </span>
-
-                    {/* Battery Dots (Teal Active, Slate Inactive) */}
-                    <div className="flex items-center gap-0.5">
-                      {Array.from({ length: item.total }).map((_, barIdx) => (
-                        <span
-                          key={barIdx}
-                          className={`w-1.5 h-3.5 rounded-full ${
-                            barIdx < item.completed
-                              ? "bg-[#0D9488]"
-                              : "bg-slate-200"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Actions Button */}
-                  <button
-                    type="button"
-                    onClick={() => onNavigate("patients")}
-                    aria-label="Actions"
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-[#1A365D] hover:bg-slate-100 transition-colors"
-                  >
-                    <MoreHorizontal size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+  return <article className="min-w-0 overflow-hidden rounded-[28px] bg-[#1A365D] p-4 text-white shadow-sm sm:p-6 lg:col-span-5" aria-label="Appointment calendar">
+    <div className="flex flex-col gap-2 border-b border-white/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <span className="text-[10px] font-bold uppercase tracking-[.16em] text-[#45c4b5]">OPD schedule</span>
+        <h2 className="mt-0.5 text-lg font-bold tracking-tight">Clinic appointments</h2>
+      </div>
+      <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:justify-start">
+        <button type="button" onClick={returnToToday} className="h-8 rounded-full bg-white/10 px-3 text-[11px] font-semibold text-slate-200 transition hover:bg-white/15 hover:text-white">Today</button>
+        <button type="button" onClick={() => moveMonth(-1)} aria-label="Previous month" className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"><ChevronLeft size={17} /></button>
+        <span className="min-w-[104px] text-center text-xs font-semibold text-slate-200" aria-live="polite">{monthTitle}</span>
+        <button type="button" onClick={() => moveMonth(1)} aria-label="Next month" className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"><ChevronRight size={17} /></button>
       </div>
     </div>
-  );
+
+    <div className="grid grid-cols-7 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400" aria-hidden="true">
+      {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
+    </div>
+    <div className="grid grid-cols-7 gap-y-1 text-center">
+      {dayCells.map((day, index) => {
+        if (day === null) return <span aria-hidden="true" key={`blank-${index}`} className="mx-auto h-9 w-9" />;
+        const date = new Date(month.getFullYear(), month.getMonth(), day);
+        const key = localDateKey(date);
+        const count = bookingsByDate.get(key)?.length ?? 0;
+        const isSelected = key === selectedKey;
+        const isToday = key === todayKey;
+        const isClosed = clinicHolidays.includes(key) || date.getDay() === 0;
+        const dayTone = isSelected
+          ? "bg-white font-bold text-[#1A365D] shadow"
+          : isClosed
+            ? "bg-[#F5DEDA] font-semibold text-[#8D514D] hover:bg-[#F0D1CB]"
+            : count > 1
+              ? "bg-[#78C5B6] font-bold text-[#153A58] hover:bg-[#8BD0C2]"
+              : count === 1
+                ? "bg-[#D8EEE9] font-semibold text-[#1A365D] hover:bg-[#C7E6DF]"
+                : isToday
+                  ? "ring-1 ring-white/70 text-white"
+                  : "text-slate-300";
+        const statusLabel = isClosed ? ", clinic closed" : "";
+        return <button
+          key={key}
+          type="button"
+          aria-label={`${formatFullDate(date)}${count ? `, ${count} appointment${count === 1 ? "" : "s"}` : ", no appointments"}${statusLabel}`}
+          aria-pressed={isSelected}
+          onClick={() => onSelectDate(date)}
+          className={`relative mx-auto grid h-9 w-9 place-items-center rounded-full text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#45c4b5] ${dayTone} ${count > 0 && isClosed && !isSelected ? "ring-2 ring-[#76C6B7]" : ""} ${isSelected && isClosed ? "ring-2 ring-[#E7B9B3]" : ""}`}
+        >
+          {day}
+        </button>;
+      })}
+    </div>
+  </article>;
+}
+
+function SelectedDateAppointments({ bookings, date, onNavigate, onOpenAppointment }: {
+  bookings: BookingRecord[];
+  date: Date;
+  onNavigate: () => void;
+  onOpenAppointment: (booking: BookingRecord) => void;
+}) {
+  const isToday = localDateKey(date) === localDateKey(new Date());
+  const title = isToday ? "Today’s appointments" : `Appointments · ${formatShortDate(date)}`;
+
+  return <article className="card overflow-hidden rounded-[28px] lg:col-span-7" aria-live="polite" aria-label={title}>
+    <div className="section-row">
+      <div>
+        <span className="eyebrow">Selected date</span>
+        <h2 className="card-title">{title}</h2>
+        <p className="card-note">{bookings.length} booked patient{bookings.length === 1 ? "" : "s"}</p>
+      </div>
+      <button type="button" className="button button-secondary button-small" onClick={onNavigate}>All bookings <ArrowRight size={13} /></button>
+    </div>
+    {bookings.length ? <div className="grid gap-2 px-4 pb-4 sm:px-5 sm:pb-5">
+      {bookings.map((booking) => <AppointmentPatientCard key={booking.id} booking={booking} onClick={() => onOpenAppointment(booking)} />)}
+    </div> : <div className="empty-state mx-4 mb-4 rounded-2xl bg-[#F7F9FC] sm:mx-5 sm:mb-5">No appointments are booked for this date.</div>}
+  </article>;
+}
+
+function AppointmentPatientCard({ booking, onClick }: {
+  booking: BookingRecord;
+  onClick: () => void;
+}) {
+  const content = <>
+    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#0D9488] shadow-sm"><CalendarCheck2 size={18} /></span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-sm font-semibold text-[#1A365D]">{booking.customer}</span>
+      <span className="mt-0.5 block truncate text-xs text-slate-500">{booking.service}</span>
+      <span className="mt-1 block truncate text-[11px] text-slate-400">{booking.doctorName || "Clinic team"}</span>
+    </span>
+    <span className="flex w-full items-center justify-between gap-3 border-t border-slate-200/70 pt-2 sm:w-auto sm:flex-col sm:items-end sm:border-0 sm:pt-0">
+      <span className="text-xs font-semibold text-[#1A365D]">{formatBookingTime(booking)}</span>
+      <StatusPill status={booking.status} />
+    </span>
+  </>;
+  const cardClass = "flex min-w-0 flex-wrap items-center gap-3 rounded-2xl bg-[#F7F9FC] p-3 text-left sm:flex-nowrap sm:p-4";
+
+  return <button type="button" className={`${cardClass} w-full transition hover:bg-[#EDF3F8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0D9488]`} onClick={onClick} aria-label={`Open appointment details for ${booking.customer}`}>
+    {content}
+  </button>;
+}
+
+function RegisteredPatients({ patients, totalCount, loadState, onOpenPatient }: {
+  patients: RegisteredPatient[];
+  totalCount: number;
+  loadState: "loading" | "ready" | "error";
+  onOpenPatient: (patientId: string) => void;
+}) {
+  return <section id="registered-patients" className="card mb-4 overflow-hidden rounded-[28px]" aria-labelledby="registered-patients-title">
+    <div className="section-row">
+      <div>
+        <span className="eyebrow">Patient directory</span>
+        <h2 id="registered-patients-title" className="card-title">Registered patients</h2>
+        <p className="card-note">Select a patient to open their full profile and care history.</p>
+      </div>
+      {loadState === "ready" && <span className="rounded-full bg-[#F0F7FF] px-3 py-1 text-xs font-semibold text-[#1A365D]">{totalCount} registered</span>}
+    </div>
+    {loadState === "loading" ? <div className="empty-state">Loading registered patients…</div>
+      : loadState === "error" ? <div className="empty-state">Patient directory is unavailable right now.</div>
+      : patients.length ? <div className="table-wrap">
+      <table>
+        <thead><tr><th>Patient</th><th>Contact</th><th>Age / gender</th><th>City</th><th>Registered</th><th /></tr></thead>
+        <tbody>{patients.map((patient) => <tr key={patient.id}>
+          <td><button type="button" className="person text-left" onClick={() => onOpenPatient(patient.id)} aria-label={`Open ${patient.name} patient details`}><Avatar initials={patient.initials} /><span><span className="person-name block">{patient.name}</span><span className="person-sub block">{patient.id}</span></span></button></td>
+          <td><span className="block">{patient.email || "No email"}</span><span className="person-sub block">{patient.phone || "No phone"}</span></td>
+          <td>{[patient.age ? `${patient.age} yrs` : "", patient.gender].filter(Boolean).join(" · ") || "—"}</td>
+          <td>{patient.city || "—"}</td>
+          <td>{formatRegistrationDate(patient.createdAt)}</td>
+          <td><button type="button" className="row-action" aria-label={`Open ${patient.name}`} onClick={() => onOpenPatient(patient.id)}><ArrowRight size={15} /></button></td>
+        </tr>)}</tbody>
+      </table>
+    </div> : <div className="empty-state">No registered patients yet.</div>}
+  </section>;
+}
+
+function AppointmentDetailsDialog({ booking, patient, onClose, onOpenPatient, onAdvance, onManage }: {
+  booking: BookingRecord;
+  patient?: RegisteredPatient;
+  onClose: () => void;
+  onOpenPatient: (patientId: string) => void;
+  onAdvance: () => void;
+  onManage: () => void;
+}) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  const appointmentDateValue = appointmentDate(booking);
+  const action = nextAppointmentAction(booking);
+  const details = [
+    ["Date", appointmentDateValue ? formatFullDate(appointmentDateValue) : booking.date],
+    ["Time", formatBookingTime(booking)],
+    ["Doctor", booking.doctorName || "Not assigned"],
+    ["Visit type", booking.type || "Clinic visit"],
+    ["Room", booking.room || "Not assigned"],
+    ["Booking source", booking.source || "Not recorded"],
+    ["OPD token", booking.tokenNumber || "Not assigned"],
+    ["OPD status", booking.opdStatus || booking.status],
+  ] as const;
+
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal max-w-xl overflow-y-auto" style={{ maxHeight: "calc(100dvh - 40px)" }} role="dialog" aria-modal="true" aria-labelledby="appointment-detail-title">
+      <div className="modal-head">
+        <div>
+          <span className="eyebrow">Appointment details</span>
+          <h2 id="appointment-detail-title">{booking.customer}</h2>
+          <p>{booking.service}</p>
+        </div>
+        <button type="button" className="row-action" aria-label="Close appointment details" onClick={onClose}><X size={17} /></button>
+      </div>
+      <div className="modal-body">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-[#F7F9FC] p-3">
+          <div><span className="person-sub">Booking reference</span><p className="person-name mt-1">{booking.id}</p></div>
+          <StatusPill status={booking.status} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {details.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-100 p-3">
+            <p className="person-sub">{label}</p><p className="mt-1 text-sm font-medium text-[#1A365D]">{value}</p>
+          </div>)}
+        </div>
+        {patient ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dcebe8] bg-[#f4faf9] p-3">
+          <div><p className="text-xs font-semibold text-[#1A365D]">Linked registered profile</p><p className="person-sub mt-1">{patient.name} · {patient.id}</p></div>
+          <button type="button" className="button button-primary button-small" onClick={() => onOpenPatient(patient.id)}>Open patient profile <ArrowRight size={13} /></button>
+        </div> : <p className="rounded-xl bg-[#F7F9FC] p-3 text-xs leading-5 text-slate-500">No registered patient profile is linked to this appointment yet.</p>}
+      </div>
+      <div className="modal-actions flex-col sm:flex-row">
+        {action && <button type="button" className="button button-primary" onClick={onAdvance}>{action.label}<ArrowRight size={14} /></button>}
+        <button type="button" className="button button-secondary" onClick={onManage}><CalendarCheck2 size={14} />Manage booking</button>
+      </div>
+    </section>
+  </div>, document.body);
+}
+
+function normalizePatientName(name: string) {
+  return name.trim().toLocaleLowerCase().replace(/\s+/g, " ");
+}
+
+function nextAppointmentAction(booking: BookingRecord) {
+  const opdStatus = booking.opdStatus;
+  if (["Completed", "Cancelled", "No show"].includes(booking.status) || opdStatus === "Completed" || opdStatus === "No show") return null;
+  if (opdStatus === "Requested" || booking.status === "Pending" && !opdStatus) return { label: "Confirm appointment", opdStatus: "Confirmed" as const };
+  const appointment = appointmentDate(booking);
+  if (appointment && localDateKey(appointment) > localDateKey(startOfToday())) return null;
+  if (opdStatus === "Arrived") return { label: "Start consultation", opdStatus: "In Consultation" as const };
+  if (opdStatus === "In Consultation") return { label: "Complete consultation", opdStatus: "Completed" as const };
+  if (opdStatus === "Confirmed" || booking.status === "Pending") return { label: "Mark patient arrived", opdStatus: "Arrived" as const };
+  return { label: "Mark patient arrived", opdStatus: "Arrived" as const };
+}
+
+function formatRegistrationDate(value: string) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(date);
+}
+
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function localDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function appointmentDate(booking: BookingRecord): Date | null {
+  if (booking.startsAt) {
+    const fromTimestamp = new Date(booking.startsAt);
+    return Number.isNaN(fromTimestamp.getTime()) ? null : fromTimestamp;
+  }
+  const label = booking.date.toLowerCase();
+  const date = startOfToday();
+  if (label.includes("tomorrow")) date.setDate(date.getDate() + 1);
+  else if (label.includes("today")) return date;
+  else {
+    const parsed = new Date(booking.date);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return date;
+}
+
+function formatFullDate(date: Date) {
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", year: "numeric" }).format(date);
+}
+
+function formatShortDate(date: Date) {
+  return new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(date);
+}
+
+function formatBookingTime(booking: BookingRecord) {
+  if (!booking.startsAt) return booking.date.split("·")[1]?.trim() || "Time not set";
+  const date = new Date(booking.startsAt);
+  return Number.isNaN(date.getTime()) ? "Time not set" : new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" }).format(date);
 }

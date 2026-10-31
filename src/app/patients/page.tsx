@@ -1,5 +1,5 @@
-import { AdminApplication } from "@/features/shared/components/admin-application";
+import { redirect } from "next/navigation";
 
 export default function PatientsPage() {
-  return <AdminApplication initialPage="patients" />;
+  redirect("/?panel=overview#registered-patients");
 }

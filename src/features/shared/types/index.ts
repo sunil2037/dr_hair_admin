@@ -132,6 +132,10 @@ export interface BookingRecord {
   room?: string;
   tokenNumber?: string;
   opdStatus?: "Requested" | "Confirmed" | "Arrived" | "In Consultation" | "Completed" | "No show";
+  consultationFee?: number;
+  paymentStatus?: "Pending" | "Paid" | "Refunded" | "Waived";
+  paymentMethod?: string;
+  paymentTransactionId?: string;
 }
 
 export interface AuditEventRecord {

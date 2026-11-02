@@ -421,6 +421,8 @@ function AppointmentDetailsDialog({ booking, patient, onClose, onOpenPatient, on
     ["Booking source", booking.source || "Not recorded"],
     ["OPD token", booking.tokenNumber || "Not assigned"],
     ["OPD status", booking.opdStatus || booking.status],
+    ["Consultation fee", `₹${booking.consultationFee ?? 500}`],
+    ["Payment", `${booking.paymentStatus ?? "Pending"}${booking.paymentMethod ? ` · ${booking.paymentMethod}` : ""}`],
   ] as const;
 
   if (typeof document === "undefined") return null;

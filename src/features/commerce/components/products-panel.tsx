@@ -105,7 +105,7 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
   const [movements, setMovements] = useSessionState<StockMovement[]>("drhair-commerce-stock-movements", []);
   const visibleProducts = products.filter((product) =>
     `${product.name} ${product.sku} ${product.category} ${(product.rootCauses ?? []).join(" ")}`.toLowerCase().includes(query.toLowerCase()) &&
-    (statusFilter === "All status" || product.status === statusFilter),
+    (statusFilter === "All status" || product.status?.toLowerCase() === statusFilter.toLowerCase()),
   );
   const allPlans = products.flatMap((product) => getPlans(product).map((plan) => ({ product, plan })));
   const lowStockCount = allPlans.filter(({ plan }) => plan.stock <= plan.lowStockThreshold).length;
@@ -143,7 +143,7 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
       supplyPlans: plans, benefits, ingredients, usageSteps, clinicalClaims,
       updated: "Just now",
     };
-    const productId = existing?.id ?? `PRD-${Date.now()}`;
+    const productId = existing?.id ?? `prd-${Date.now()}`;
     const previousPlans = existing ? getPlans(existing) : [];
     const stockChanges = plans.flatMap((plan) => {
       const previousStock = previousPlans.find((previous) => previous.id === plan.id)?.stock ?? 0;
@@ -161,10 +161,35 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
     if (stockChanges.length) setMovements((current) => [...stockChanges, ...current]);
     if (existing) {
       onProductsChange((current) => current.map((product) => product.id === existing.id ? { ...product, ...details } : product));
-      onToast("Product details saved in this browser preview.");
+      fetch(`/api/admin/products/${encodeURIComponent(existing.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(details),
+      })
+        .then(async (res) => {
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.message || "Could not update product");
+          onToast("Product details saved to catalog.");
+        })
+        .catch((err) => {
+          onToast(err instanceof Error ? err.message : "Saved in browser preview.");
+        });
     } else {
-      onProductsChange((current) => [{ id: productId, ...details, unitsSold: 0, revenue: 0 }, ...current]);
-      onToast("Product added to the local catalog.");
+      const payload = { id: productId, ...details, unitsSold: 0, revenue: 0 };
+      onProductsChange((current) => [payload, ...current]);
+      fetch("/api/admin/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(async (res) => {
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.message || "Could not add product");
+          onToast("Product added to catalog.");
+        })
+        .catch((err) => {
+          onToast(err instanceof Error ? err.message : "Product added to local preview.");
+        });
     }
     return true;
   };
@@ -176,9 +201,15 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
       return false;
     }
     const plans = getPlans(product).map((item) => item.id === planId ? { ...item, stock: item.stock + delta } : item);
+    const updatedStock = plans.reduce((sum, variant) => sum + variant.stock, 0);
     onProductsChange((current) => current.map((item) => item.id === product.id ? {
-      ...item, supplyPlans: plans, stock: plans.reduce((sum, variant) => sum + variant.stock, 0), updated: "Just now",
+      ...item, supplyPlans: plans, stock: updatedStock, updated: "Just now",
     } : item));
+    fetch(`/api/admin/products/${encodeURIComponent(product.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ supply_plans: plans, stock: updatedStock }),
+    }).catch(() => {});
     setMovements((current) => [{
       id: `STK-${Date.now()}`, productId: product.id, variantId: planId,
       variantTitle: plan.title, quantityChange: delta, reason: reason.trim(), createdAt: new Date().toISOString(),
@@ -190,6 +221,9 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
   const archive = () => {
     if (!archiveProduct) return;
     onProductsChange((current) => current.map((item) => item.id === archiveProduct.id ? { ...item, status: "Archived", updated: "Just now" } : item));
+    fetch(`/api/admin/products/${encodeURIComponent(archiveProduct.id)}`, {
+      method: "DELETE",
+    }).catch(() => {});
     onToast(`${archiveProduct.name} archived. Its past order history is preserved.`);
     setArchiveProduct(null);
   };
@@ -207,7 +241,7 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
     </div>
     <div className="commerce-mini-stats product-inventory-summary">
       <span><Package size={14} />{products.length} products</span>
-      <span><BadgeCheck size={14} />{products.filter((product) => product.status === "Active").length} live in app</span>
+      <span><BadgeCheck size={14} />{products.filter((product) => product.status?.toLowerCase() === "active").length} live in app</span>
       <span className={lowStockCount ? "stock-low" : ""}><Boxes size={14} />{lowStockCount} low-stock plans</span>
       <span><ImagePlus size={14} />{products.reduce((sum, product) => sum + product.media.length, 0)} media assets</span>
     </div>
@@ -267,6 +301,25 @@ function ProductEditor({ product, onClose, onSave }: {
     setPreviews((current) => [...current, ...picked]);
     setField("media", [...form.media, ...picked.map(({ name, kind }, index) => ({ name, kind, isPrimary: form.media.length === 0 && index === 0 && kind === "image" }))]);
     event.target.value = "";
+
+    // Upload to Cloudinary storage via media upload API
+    files.forEach((file) => {
+      const formData = new FormData();
+      formData.set("file", file);
+      fetch("/api/admin/media/upload", {
+        method: "POST",
+        body: formData,
+        headers: { "X-Media-Purpose": "product" },
+      })
+        .then(async (res) => {
+          const body = await res.json().catch(() => ({}));
+          const cloudUrl = body?.data?.secure_url || body?.data?.url;
+          if (cloudUrl) {
+            setField("media", form.media.map((item) => (item.name === file.name ? { ...item, name: cloudUrl } : item)));
+          }
+        })
+        .catch(() => {});
+    });
   };
   const updatePlan = (index: number, field: keyof ProductSupplyPlan, value: string) => setForm((current) => ({
     ...current, supplyPlans: current.supplyPlans.map((plan, planIndex) => planIndex === index ? {

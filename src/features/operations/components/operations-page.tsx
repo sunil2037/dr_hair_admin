@@ -753,6 +753,20 @@ function CareOperationsPage({
                 <span className="text-slate-500">Scheduled:</span>
                 <span className="font-medium text-slate-700">{dialog.date}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">OPD token:</span>
+                <span className="font-semibold text-slate-800">{dialog.tokenNumber || "Not assigned"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Consultation fee:</span>
+                <span className="font-medium text-slate-700">₹{dialog.consultationFee ?? 500}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Payment:</span>
+                <span className="font-medium text-slate-700">
+                  {dialog.paymentStatus ?? "Pending"}{dialog.paymentMethod ? ` · ${dialog.paymentMethod}` : ""}
+                </span>
+              </div>
               <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                 <span className="text-slate-500">Status:</span>
                 <StatusPill status={bookingStatusLabel(dialog)} />
@@ -764,6 +778,19 @@ function CareOperationsPage({
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("Cancelled")} className="button button-danger">Cancel visit</button>}
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("No show")} className="button button-secondary">Mark no-show</button>}
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => rescheduleAppointment(dialog)} className="button button-secondary">Reschedule</button>}
+              {dialog.paymentStatus !== "Paid" && !['Cancelled', 'Completed', 'No show'].includes(dialog.status) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookings((current) => current.map((item) => (item.id === dialog.id ? { ...item, paymentStatus: "Paid" } : item)));
+                    setDialog((current) => current ? { ...current, paymentStatus: "Paid" } : null);
+                    onAudit("marked appointment payment as Paid", `Booking ${dialog.id}`);
+                  }}
+                  className="button button-primary"
+                >
+                  Mark fee paid (₹{dialog.consultationFee ?? 500})
+                </button>
+              )}
               <button type="button" onClick={() => setPrintingSlipBooking(dialog)} className="button button-secondary"><Printer size={14} /> Print slip</button>
             </div>
           </div>

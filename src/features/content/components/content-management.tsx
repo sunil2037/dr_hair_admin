@@ -54,15 +54,28 @@ const appBannerRoutes = [
 
 function mapSavedVideo(item: Record<string, unknown>): VideoContentItem {
   const seconds = typeof item.duration === "number" ? Math.round(item.duration) : 0;
+  const durationStr =
+    typeof item.duration === "string" && item.duration.trim()
+      ? item.duration.trim()
+      : seconds
+      ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+      : item.provider === "youtube"
+      ? "YouTube"
+      : "1:00";
   return {
     id: String(item.public_id || item.youtube_video_id || ""),
     publicId: typeof item.public_id === "string" ? item.public_id : undefined,
     provider: item.provider === "youtube" ? "youtube" : "cloudinary",
-    title: String(item.title || "Untitled video"), category: String(item.category || "Hair Care"),
-    duration: seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}` : "YouTube",
-    views: 0, likes: 0, creatorName: "Dr. Hair Clinic",
-    thumbnail: String(item.thumbnail_url || ""), videoUrl: String(item.secure_url || ""),
-    caption: String(item.description || ""), treatmentTag: "Hair Care",
+    title: String(item.title || "Untitled video"),
+    category: String(item.category || "Hair Care"),
+    duration: durationStr,
+    views: typeof item.views === "number" ? item.views : 0,
+    likes: typeof item.likes === "number" ? item.likes : 0,
+    creatorName: String(item.author_name || "Dr. Hair Clinic"),
+    thumbnail: String(item.thumbnail_url || ""),
+    videoUrl: String(item.secure_url || ""),
+    caption: String(item.description || ""),
+    treatmentTag: String(item.treatment || "Hair Care"),
     placement: item.placement === "home" || item.placement === "both" ? item.placement : "reels",
     apiManaged: true,
     status: item.status === "published" ? "Published" : item.status === "hidden" ? "Inactive" : "Draft",
@@ -603,6 +616,13 @@ export function ContentManagement({
     if (!deleteTarget || !canEdit) return;
     const { id, kind, title } = deleteTarget;
     if (kind === "videos") {
+      const targetVideo = videos.find((item) => item.id === id);
+      const publicId = targetVideo?.publicId || id;
+      if (publicId) {
+        fetch(`/api/admin/media/videos/${encodeURIComponent(publicId)}`, {
+          method: "DELETE",
+        }).catch(() => {});
+      }
       setVideos((prev) => prev.filter((item) => item.id !== id));
       onToast("Video removed from library.");
     } else if (kind === "reviews") {

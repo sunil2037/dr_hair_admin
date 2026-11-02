@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSessionState } from "../../shared/lib/use-session-state";
 import { PageHeader } from "../../shared/components/ui";
 import { initialCoupons, initialProducts, initialReferrals } from "../lib/demo-data";
-import type { CouponRecord, ProductRecord, ReferralRecord } from "../types";
+import type { CouponRecord, ProductRecord, ProductStatus, ReferralRecord } from "../types";
 import { CouponsPanel } from "./coupons-panel";
 import { CommerceOverview } from "./commerce-overview";
 import { ProductsPanel } from "./products-panel";
@@ -44,6 +44,62 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
     const demoRule = initialCoupons.find((coupon) => coupon.code === "FIRSTDR");
     if (demoRule) setCoupons((current) => current.some((coupon) => coupon.code === demoRule.code) ? current : [demoRule, ...current]);
   }, [coupons, setCoupons]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/admin/products", { cache: "no-store", signal: controller.signal })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const items = body?.data?.items || body?.data;
+        if (Array.isArray(items) && items.length > 0) {
+          const normalized: ProductRecord[] = items.map((raw: any) => {
+            const rawStatus = String(raw.status || "active").toLowerCase();
+            const status: ProductStatus =
+              rawStatus === "archived"
+                ? "Archived"
+                : rawStatus === "draft"
+                ? "Draft"
+                : "Active";
+
+            return {
+              id: String(raw.id),
+              name: raw.name || "Untitled Product",
+              sku: raw.sku || "DRH-001",
+              category: raw.category || "Hair",
+              description: raw.description || raw.subtitle || "",
+              price: Number(raw.price) || 0,
+              compareAtPrice: Number(raw.compareAtPrice || raw.compare_at_price) || 0,
+              unitCost: Number(raw.unitCost || raw.unit_cost) || 0,
+              stock: Number(raw.stock ?? 100),
+              unitsSold: Number(raw.unitsSold || raw.units_sold) || 0,
+              revenue: Number(raw.revenue) || 0,
+              status,
+              media: Array.isArray(raw.media) && raw.media.length > 0
+                ? raw.media
+                : (raw.images || []).map((img: string) => ({ name: img, kind: "image" as const })),
+              rootCauses: Array.isArray(raw.rootCauses || raw.root_causes)
+                ? raw.rootCauses || raw.root_causes
+                : [raw.rootCause || raw.root_cause || "Hair"],
+              supplyPlans: raw.supplyPlans || raw.supply_plans || [],
+              benefits: raw.benefits || [],
+              ingredients: raw.ingredients || [],
+              usageSteps: raw.usageSteps || raw.usage_steps || [],
+              clinicalClaims: raw.clinicalClaims || raw.clinical_metrics || [],
+              updated: raw.updated || "Recently",
+            };
+          });
+
+          setProducts((current) => {
+            const apiIds = new Set(normalized.map((i) => i.id));
+            const existingNonApi = current.filter((c) => !apiIds.has(c.id));
+            return [...normalized, ...existingNonApi];
+          });
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [setProducts]);
 
   const resolvedActiveTab = availableTabs.some((tab) => tab.id === activeTab) ? activeTab : availableTabs[0]?.id ?? "overview";
   const tabLabel = tabs.find((tab) => tab.id === resolvedActiveTab)?.label ?? "Overview";

@@ -156,27 +156,33 @@ function Denied() {
 
 function AdminSessionSkeleton() {
   return <main className="min-h-screen w-full overflow-x-clip bg-[#F7F9FC]" aria-label="Loading admin workspace" aria-busy="true">
-    <aside aria-hidden="true" className="fixed inset-y-0 left-3 z-10 hidden w-[84px] flex-col items-center justify-between py-5 px-3 md:flex lg:left-5">
+    <aside aria-hidden="true" className="fixed inset-y-0 left-3 z-10 hidden w-[68px] flex-col items-center justify-between py-5 md:flex lg:left-5">
       <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
-      <div className="flex flex-col items-center gap-2 rounded-[34px] bg-white p-2 shadow-sm">
-        {Array.from({ length: 6 }, (_, index) => <div key={index} className="h-11 w-11 animate-pulse rounded-full bg-slate-100" />)}
+      <div className="flex flex-col items-center gap-1 rounded-full bg-white/95 p-1.5 shadow-sm">
+        {Array.from({ length: 7 }, (_, index) => <div key={index} className="h-11 w-11 animate-pulse rounded-full bg-slate-100" />)}
       </div>
-      <div className="flex flex-col items-center gap-2 rounded-[34px] bg-white p-2 shadow-sm">
+      <div className="rounded-full bg-white/95 p-1.5 shadow-sm">
         <div className="h-11 w-11 animate-pulse rounded-full bg-slate-100" />
+      </div>
+      <div className="flex flex-col items-center gap-1 rounded-full bg-white/95 p-1.5 shadow-sm">
         <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" />
+        <div className="h-10 w-10 animate-pulse rounded-full bg-slate-100" />
       </div>
     </aside>
-    <section className="min-h-screen min-w-0 md:ml-[104px] lg:ml-[112px]" aria-hidden="true">
-      <header className="flex h-[76px] items-center justify-between bg-[#F7F9FC]/90 px-4 sm:px-8">
+    <section className="min-h-screen min-w-0 md:ml-[92px] lg:ml-[108px]" aria-hidden="true">
+      <header className="flex h-[68px] items-center justify-between bg-[#F7F9FC]/90 px-4 sm:px-8">
         <div className="space-y-2"><div className="h-5 w-32 animate-pulse rounded bg-slate-200" /><div className="h-3 w-56 animate-pulse rounded bg-slate-100" /></div>
-        <div className="flex items-center gap-3"><div className="hidden h-10 w-52 animate-pulse rounded-full bg-white sm:block" /><div className="h-10 w-28 animate-pulse rounded-full bg-slate-200" /></div>
+        <div className="flex items-center gap-3"><div className="hidden h-10 w-52 animate-pulse rounded-full bg-white sm:block" /><div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" /></div>
       </header>
-      <div className="mx-auto max-w-[1460px] space-y-5 px-4 py-6 sm:px-8">
+      <div className="mx-auto max-w-[1460px] space-y-5 px-4 py-6 pb-28 sm:px-8 md:pb-8">
         <div className="h-40 animate-pulse rounded-[28px] border border-slate-200 bg-white" />
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.4fr_1fr]"><div className="h-80 animate-pulse rounded-[28px] border border-slate-200 bg-white" /><div className="h-80 animate-pulse rounded-[28px] border border-slate-200 bg-white" /></div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" />)}</div>
       </div>
     </section>
+    <div aria-hidden="true" className="fixed bottom-[calc(env(safe-area-inset-bottom)+12px)] left-1/2 z-10 flex w-[min(360px,calc(100vw-28px))] -translate-x-1/2 items-center justify-around rounded-full border border-slate-200/80 bg-white/95 p-2 shadow-sm md:hidden">
+      {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-11 w-11 animate-pulse rounded-full bg-slate-100" />)}
+    </div>
     <span className="sr-only">Checking your secure admin session…</span>
   </main>;
 }

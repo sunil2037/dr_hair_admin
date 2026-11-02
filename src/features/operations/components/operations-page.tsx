@@ -84,7 +84,22 @@ function CareOperationsPage({
   const [apiPatientError, setApiPatientError] = useState("");
   const [reloadPatients, setReloadPatients] = useState(0);
   const patients = isPatient ? apiPatients : demoPatients;
-  const [bookings, setBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
+
+  const [demoBookings, setDemoBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
+  const [apiBookings, setApiBookings] = useState<BookingRecord[]>([]);
+  const [reloadBookings, setReloadBookings] = useState(0);
+  const bookings = apiBookings.length > 0 ? apiBookings : demoBookings;
+  const setBookings = (updater: BookingRecord[] | ((current: BookingRecord[]) => BookingRecord[])) => {
+    setDemoBookings((curr) => {
+      const next = typeof updater === "function" ? updater(bookings) : updater;
+      return next;
+    });
+    setApiBookings((curr) => {
+      const next = typeof updater === "function" ? updater(bookings) : updater;
+      return next;
+    });
+  };
+
   const [profiles] = useSessionState("drhair-demo-patient-profiles", patientClinicalProfiles);
   const [query, setQuery] = useState("");
   const [triageFilter, setTriageFilter] = useState<TriageFilter>("all");
@@ -112,6 +127,50 @@ function CareOperationsPage({
   const [currentTime, setCurrentTime] = useState(0);
   const apiSearch = `${globalSearch} ${query}`.trim();
   const patientPage = patientPageState.search === apiSearch ? patientPageState.page : 1;
+
+  useEffect(() => {
+    if (isPatient) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/admin/appointments", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+        const data = result.data && typeof result.data === "object" ? result.data : {};
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length > 0) {
+          setApiBookings(items.map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ""),
+            customer: String(item.customer || item.name || "Patient"),
+            patientId: String(item.patientId || item.patient_code || item.userId || ""),
+            patientCode: typeof item.patient_code === "string" ? item.patient_code : undefined,
+            service: String(item.service || item.reason || "Clinic consultation"),
+            date: String(item.date || ""),
+            startsAt: typeof item.startsAt === "string" ? item.startsAt : (typeof item.starts_at === "string" ? item.starts_at : undefined),
+            status: (item.status || item.opdStatus || "Requested") as BookingRecord["status"],
+            source: (item.source || "App") as BookingRecord["source"],
+            doctorName: String(item.doctorName || item.doctor_name || "Dr. Jai Bansal"),
+            room: typeof item.room === "string" ? item.room : "Room 101 - Chamber A",
+            tokenNumber: typeof item.tokenNumber === "string" ? item.tokenNumber : (typeof item.opd_token === "string" ? item.opd_token : undefined),
+            opdStatus: (item.status || item.opdStatus || "Confirmed") as BookingRecord["opdStatus"],
+            consultationFee: typeof item.consultationFee === "number" ? item.consultationFee : (typeof item.consultation_fee === "number" ? item.consultation_fee : 500),
+            paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
+            paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
+            paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
+          })));
+        }
+      } catch {
+        // Retain current bookings state
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isPatient, reloadBookings]);
 
   useEffect(() => {
     if (!isPatient) return;

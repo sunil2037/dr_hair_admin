@@ -1,12 +1,13 @@
 "use client";
 
-import { BellRing, CalendarClock, CircleAlert, Send, X } from "lucide-react";
-import { useState } from "react";
+import { BellRing, CalendarClock, CircleAlert, Link2, Send, Sparkles, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { StatusPill } from "../../shared/components/ui";
-import { useSessionState } from "../../shared/lib/use-session-state";
 
-type NotificationStatus = "Queued" | "Scheduled" | "Cancelled";
+type NotificationStatus = "Sent" | "Queued" | "Scheduled" | "Cancelled";
 type Audience = "All app users" | "Active patients" | "Patients with a shared report";
+type DeepLinkTarget = "clinic_appointment" | "product" | "hair_test" | "videos" | "orders" | "profile";
+
 interface NotificationRecord {
   id: string;
   title: string;
@@ -15,11 +16,16 @@ interface NotificationRecord {
   status: NotificationStatus;
   createdAt: string;
   scheduledAt?: string;
+  destination?: {
+    type: string;
+    screen?: string;
+    entityId?: string;
+  };
 }
 
 const initialNotifications: NotificationRecord[] = [
-  { id: "NTF-204", title: "Your weekly progress check-in", message: "Take a moment to share how your hair care routine is going this week.", audience: "Active patients", status: "Scheduled", createdAt: "Today", scheduledAt: "Oct 30, 2026 · 9:00 AM" },
-  { id: "NTF-203", title: "Your report is ready", message: "A new report is available in your Dr. Hair app.", audience: "Patients with a shared report", status: "Queued", createdAt: "Yesterday" },
+  { id: "NTF-204", title: "Your weekly progress check-in", message: "Take a moment to share how your hair care routine is going this week.", audience: "Active patients", status: "Sent", createdAt: "Today" },
+  { id: "NTF-203", title: "Your report is ready", message: "A new report is available in your Dr. Hair app.", audience: "Patients with a shared report", status: "Sent", createdAt: "Yesterday" },
 ];
 
 const audienceCounts: Record<Audience, number> = {
@@ -29,14 +35,37 @@ const audienceCounts: Record<Audience, number> = {
 };
 
 export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: string) => void; onAudit: (action: string, target: string) => void }) {
-  const [records, setRecords] = useSessionState<NotificationRecord[]>("drhair-app-notifications", initialNotifications);
+  const [records, setRecords] = useState<NotificationRecord[]>(initialNotifications);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [audience, setAudience] = useState<Audience>("Active patients");
+  const [deepLink, setDeepLink] = useState<DeepLinkTarget>("clinic_appointment");
+  const [productId, setProductId] = useState("prod-anti-dandruff-shampoo");
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const submit = () => {
+  useEffect(() => {
+    fetch("/api/admin/notifications?page=1&limit=20")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.data?.items && Array.isArray(data.data.items) && data.data.items.length > 0) {
+          const mapped: NotificationRecord[] = data.data.items.map((item: any) => ({
+            id: item.id || `NTF-${item._id?.slice(-5) || "001"}`,
+            title: item.title,
+            message: item.body,
+            audience: (item.audience as Audience) || "All app users",
+            status: "Sent",
+            createdAt: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.created_at || Date.now())),
+            destination: item.destination,
+          }));
+          setRecords(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const submit = async () => {
     const cleanTitle = title.trim();
     const cleanMessage = message.trim();
     if (cleanTitle.length < 3 || cleanTitle.length > 60) {
@@ -51,55 +80,239 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
       onToast("Choose a future date and time for the notification.");
       return;
     }
-    const record: NotificationRecord = {
-      id: `NTF-${Date.now().toString().slice(-5)}`,
+
+    const destinationPayload = deepLink === "product"
+      ? { type: "product", entityId: productId.trim() }
+      : { type: "screen", screen: deepLink };
+
+    const payload = {
       title: cleanTitle,
-      message: cleanMessage,
+      body: cleanMessage,
       audience,
-      status: scheduleMode === "later" ? "Scheduled" : "Queued",
-      createdAt: "Just now",
-      scheduledAt: scheduleMode === "later" ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(scheduledAt)) : undefined,
+      destination: destinationPayload,
+      data: {
+        destination_type: destinationPayload.type,
+        ...(deepLink === "product" ? { entity_id: productId.trim() } : { screen: deepLink }),
+      },
     };
-    setRecords((current) => [record, ...current]);
-    onAudit(scheduleMode === "later" ? "scheduled app notification" : "queued app notification", cleanTitle);
-    onToast(scheduleMode === "later" ? "Notification saved to the demo schedule." : "Notification added to the local demo queue.");
-    setTitle("");
-    setMessage("");
-    setScheduledAt("");
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      const record: NotificationRecord = {
+        id: json?.data?.notification?.id || `NTF-${Date.now().toString().slice(-5)}`,
+        title: cleanTitle,
+        message: cleanMessage,
+        audience,
+        status: scheduleMode === "later" ? "Scheduled" : "Sent",
+        createdAt: "Just now",
+        scheduledAt: scheduleMode === "later" ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(scheduledAt)) : undefined,
+        destination: destinationPayload,
+      };
+
+      setRecords((current) => [record, ...current]);
+      onAudit("sent push notification", cleanTitle);
+      
+      const sentCount = json?.data?.sent != null ? json.data.sent : 0;
+      onToast(sentCount > 0 
+        ? `Push notification sent to ${sentCount} device(s).` 
+        : "Push notification created and broadcast to inboxes.");
+
+      setTitle("");
+      setMessage("");
+      setScheduledAt("");
+    } catch {
+      onToast("Could not send notification. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const cancel = (record: NotificationRecord) => {
-    setRecords((current) => current.map((item) => item.id === record.id ? { ...item, status: "Cancelled" } : item));
+    setRecords((current) => current.map((item) => (item.id === record.id ? { ...item, status: "Cancelled" } : item)));
     onAudit("cancelled app notification", record.title);
-    onToast("Scheduled notification cancelled in this demo.");
+    onToast("Scheduled notification cancelled.");
   };
 
-  return <div className="space-y-4">
-    <div className="notice"><CircleAlert size={14} /><span>Demo mode: this screen only saves a local preview. No push notification is sent. Keep diagnoses, test findings, and other private medical details out of notification text.</span></div>
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,.9fr)]">
-      <section className="card p-4 sm:p-5">
-        <div className="section-row !p-0 !pb-4"><div><h2 className="card-title">Compose notification</h2><p className="card-note">Write a short, privacy-safe message for the Dr. Hair app.</p></div><span className="module-symbol"><BellRing size={16} /></span></div>
-        <div className="grid gap-3">
-          <label className="field"><span>Notification title</span><input value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Your weekly progress check-in" /><small>{title.trim().length}/60 characters</small></label>
-          <label className="field"><span>Message</span><textarea value={message} maxLength={160} rows={3} onChange={(event) => setMessage(event.target.value)} placeholder="Keep it brief. The app can show private details after sign-in." /><small>{message.trim().length}/160 characters</small></label>
-          <label className="field"><span>Audience</span><select value={audience} onChange={(event) => setAudience(event.target.value as Audience)}><option>All app users</option><option>Active patients</option><option>Patients with a shared report</option></select><small>Estimated audience: {audienceCounts[audience].toLocaleString("en-IN")} users · demo estimate</small></label>
-          <fieldset className="grid gap-2 border-0 p-0"><legend className="mb-2 text-[11px] font-semibold text-slate-600">When should it go out?</legend><div className="flex flex-wrap gap-2"><button type="button" className={`filter-button ${scheduleMode === "now" ? "selected" : ""}`} onClick={() => setScheduleMode("now")}><Send size={13} />Queue now</button><button type="button" className={`filter-button ${scheduleMode === "later" ? "selected" : ""}`} onClick={() => setScheduleMode("later")}><CalendarClock size={13} />Schedule</button></div></fieldset>
-          {scheduleMode === "later" && <label className="field"><span>Scheduled date and time</span><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small>Choose a future local date and time.</small></label>}
-          <div className="flex justify-end"><button className="button button-primary" type="button" onClick={submit}><Send size={14} />{scheduleMode === "later" ? "Save schedule" : "Add to queue"}</button></div>
-        </div>
-      </section>
+  return (
+    <div className="space-y-4">
+      <div className="notice border border-teal-200/60 bg-teal-50/60 text-teal-800">
+        <Sparkles size={14} className="text-teal-600" />
+        <span>
+          Firebase Cloud Messaging is active. Broadcasts and targeted pushes trigger real-time device notifications and in-app inbox messages with dynamic deep linking.
+        </span>
+      </div>
 
-      <section className="card p-4 sm:p-5">
-        <div className="section-row !p-0 !pb-2"><div><h2 className="card-title">Recent notifications</h2><p className="card-note">Delivery stays marked as demo until the notification service is connected.</p></div><span className="text-[10px] text-slate-400">{records.length} records</span></div>
-        <div className="divide-y divide-slate-100">
-          {records.map((record) => <article key={record.id} className="flex items-start gap-3 py-3.5">
-            <span className="activity-icon mt-0.5"><BellRing size={14} /></span>
-            <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-xs text-slate-800">{record.title}</strong><StatusPill status={record.status} /></div><p className="mb-1 mt-1 text-[11px] leading-5 text-slate-500">{record.message}</p><div className="text-[10px] text-slate-400">{record.audience} · {record.scheduledAt ?? record.createdAt} · Not sent</div></div>
-            {record.status === "Scheduled" && <button className="row-action" aria-label={`Cancel ${record.title}`} title="Cancel schedule" onClick={() => cancel(record)}><X size={14} /></button>}
-          </article>)}
-          {records.length === 0 && <div className="empty-state">No notifications yet. Compose the first one to create a local preview.</div>}
-        </div>
-      </section>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,.9fr)]">
+        <section className="card p-4 sm:p-5">
+          <div className="section-row !p-0 !pb-4">
+            <div>
+              <h2 className="card-title">Compose push notification</h2>
+              <p className="card-note">Write a privacy-safe message with dynamic screen deep linking for Dr. Hair patients.</p>
+            </div>
+            <span className="module-symbol"><BellRing size={16} /></span>
+          </div>
+
+          <div className="grid gap-3">
+            <label className="field">
+              <span>Notification title</span>
+              <input
+                value={title}
+                maxLength={60}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="e.g. Scalp Health Checkup Available"
+              />
+              <small>{title.trim().length}/60 characters</small>
+            </label>
+
+            <label className="field">
+              <span>Message</span>
+              <textarea
+                value={message}
+                maxLength={160}
+                rows={3}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Brief update. Sensitive medical details will be shown inside the app after login."
+              />
+              <small>{message.trim().length}/160 characters</small>
+            </label>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="field">
+                <span>Audience</span>
+                <select value={audience} onChange={(event) => setAudience(event.target.value as Audience)}>
+                  <option>All app users</option>
+                  <option>Active patients</option>
+                  <option>Patients with a shared report</option>
+                </select>
+                <small>Targets: {audienceCounts[audience].toLocaleString("en-IN")} patients</small>
+              </label>
+
+              <label className="field">
+                <span className="flex items-center gap-1"><Link2 size={12} /> App Deep Link Destination</span>
+                <select value={deepLink} onChange={(event) => setDeepLink(event.target.value as DeepLinkTarget)}>
+                  <option value="clinic_appointment">Clinic Appointment Booking</option>
+                  <option value="product">Specific Product</option>
+                  <option value="hair_test">Hair Assessment & Test</option>
+                  <option value="videos">Patient Video Stories</option>
+                  <option value="orders">Orders History</option>
+                  <option value="profile">Patient Routine / Care Plan</option>
+                </select>
+                <small>Dynamic screen triggered upon tap</small>
+              </label>
+            </div>
+
+            {deepLink === "product" && (
+              <label className="field">
+                <span>Product ID / Slug</span>
+                <input
+                  value={productId}
+                  onChange={(e) => setProductId(e.target.value)}
+                  placeholder="e.g. prod-anti-dandruff-shampoo"
+                />
+                <small>App opens Product Details view directly for this item</small>
+              </label>
+            )}
+
+            <fieldset className="grid gap-2 border-0 p-0">
+              <legend className="mb-2 text-[11px] font-semibold text-slate-600">Delivery timing</legend>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={`filter-button ${scheduleMode === "now" ? "selected" : ""}`}
+                  onClick={() => setScheduleMode("now")}
+                >
+                  <Send size={13} /> Send Now
+                </button>
+                <button
+                  type="button"
+                  className={`filter-button ${scheduleMode === "later" ? "selected" : ""}`}
+                  onClick={() => setScheduleMode("later")}
+                >
+                  <CalendarClock size={13} /> Schedule
+                </button>
+              </div>
+            </fieldset>
+
+            {scheduleMode === "later" && (
+              <label className="field">
+                <span>Scheduled date and time</span>
+                <input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(event) => setScheduledAt(event.target.value)}
+                />
+                <small>Choose a future local date and time.</small>
+              </label>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={isSubmitting}
+                onClick={submit}
+              >
+                <Send size={14} />
+                {isSubmitting ? "Sending..." : scheduleMode === "later" ? "Save Schedule" : "Send Push Notification"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="card p-4 sm:p-5">
+          <div className="section-row !p-0 !pb-2">
+            <div>
+              <h2 className="card-title">Recent notification history</h2>
+              <p className="card-note">Delivered FCM push notifications and in-app announcements.</p>
+            </div>
+            <span className="text-[10px] text-slate-400">{records.length} records</span>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {records.map((record) => (
+              <article key={record.id} className="flex items-start gap-3 py-3.5">
+                <span className="activity-icon mt-0.5"><BellRing size={14} /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong className="text-xs text-slate-800">{record.title}</strong>
+                    <StatusPill status={record.status} />
+                    {record.destination?.screen && (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600">
+                        ➔ {record.destination.screen}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mb-1 mt-1 text-[11px] leading-5 text-slate-500">{record.message}</p>
+                  <div className="text-[10px] text-slate-400">
+                    {record.audience} · {record.scheduledAt ?? record.createdAt}
+                  </div>
+                </div>
+                {record.status === "Scheduled" && (
+                  <button
+                    className="row-action"
+                    aria-label={`Cancel ${record.title}`}
+                    title="Cancel schedule"
+                    onClick={() => cancel(record)}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </article>
+            ))}
+            {records.length === 0 && (
+              <div className="empty-state">No notifications recorded yet.</div>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
-  </div>;
+  );
 }

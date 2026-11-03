@@ -3,8 +3,19 @@ import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../.
 
 type RouteContext = { params: Promise<{ userId: string }> };
 
+async function adminToken(request: Request) {
+  const cookieStore = await cookies();
+  const cookieToken = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  if (cookieToken) return cookieToken;
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+    return authHeader.slice(7).trim();
+  }
+  return undefined;
+}
+
 export async function PATCH(request: Request, { params }: RouteContext) {
-  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+  const token = await adminToken(request);
   if (!token) return noStoreJson({ message: "Sign in as Super Admin to change user account status." }, 401);
   const { userId } = await params;
   let body: unknown;

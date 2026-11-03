@@ -67,6 +67,7 @@ export function AuditLog({
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("All activity");
   const [serverEvents, setServerEvents] = useState<AuditEventRecord[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   // User management state
@@ -84,39 +85,41 @@ export function AuditLog({
   const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
 
   // Load system audit logs
-  useEffect(() => {
-    const controller = new AbortController();
-    const loadAuditLogs = async () => {
-      try {
-        const response = await fetch("/api/admin/audit-logs?limit=100", { cache: "no-store", signal: controller.signal });
-        const result = await response.json().catch(() => ({}));
-        if (response.ok && Array.isArray(result?.data?.items)) {
-          const items: unknown[] = result.data.items;
-          setServerEvents(
-            items.map((item) => {
-              const raw = item as Record<string, unknown>;
-              const actor = String(raw.actor ?? "System");
-              const action = String(raw.action ?? "");
-              const target = String(raw.target ?? "");
-              const targetType = String(raw.targetType || "System");
-              return {
-                who: actor,
-                initials: actor.split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase() || "SY",
-                action,
-                target,
-                type: mapEventType(targetType, action),
-                time: raw.created_at ? new Date(String(raw.created_at)).toLocaleString() : new Date().toLocaleString(),
-              };
-            })
-          );
-        }
-      } catch {
-        // Fallback silently to parent events
+  const loadAuditLogs = async () => {
+    setLoadingAudit(true);
+    try {
+      const response = await fetch("/api/admin/audit-logs?limit=100", { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) {
+        const rawItems = Array.isArray(result?.data?.items)
+          ? result.data.items
+          : Array.isArray(result?.data)
+          ? result.data
+          : [];
+        setServerEvents(
+          rawItems.map((item: unknown) => {
+            const raw = item as Record<string, unknown>;
+            const actor = String(raw.actor ?? "System");
+            const action = String(raw.action ?? "");
+            const target = String(raw.target ?? "");
+            const targetType = String(raw.targetType || raw.type || "System");
+            return {
+              who: actor,
+              initials: actor.split(/\s+/).map((p) => p[0] || "").join("").slice(0, 2).toUpperCase() || "SY",
+              action,
+              target,
+              type: mapEventType(targetType, action),
+              time: raw.created_at ? new Date(String(raw.created_at)).toLocaleString() : new Date().toLocaleString(),
+            };
+          })
+        );
       }
-    };
-    void loadAuditLogs();
-    return () => controller.abort();
-  }, []);
+    } catch {
+      // Fallback silently to parent events
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
 
   // Load user login activity list
   const loadUsers = async () => {
@@ -124,17 +127,24 @@ export function AuditLog({
     try {
       const response = await fetch("/api/admin/users?limit=100", { cache: "no-store" });
       const result = await response.json().catch(() => ({}));
-      if (response.ok && Array.isArray(result?.data?.items)) {
-        setUsers(result.data.items as LoginUserRecord[]);
+      if (!response.ok) {
+        throw new Error(result?.message || "Failed to load patient accounts list.");
       }
-    } catch {
-      onToast("Could not load user accounts list.");
+      const rawList = Array.isArray(result?.data?.items)
+        ? result.data.items
+        : Array.isArray(result?.data)
+        ? result.data
+        : [];
+      setUsers(rawList as LoginUserRecord[]);
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : "Could not load user accounts list.");
     } finally {
       setLoadingUsers(false);
     }
   };
 
   useEffect(() => {
+    void loadAuditLogs();
     void loadUsers();
   }, []);
 
@@ -270,9 +280,14 @@ export function AuditLog({
         description="Monitor user sessions, live activity, access controls, and administrative actions."
         action={
           <div className="flex items-center gap-2">
-            <button className="button button-secondary" onClick={loadUsers} disabled={loadingUsers} title="Refresh records">
-              <RefreshCw size={14} className={loadingUsers ? "animate-spin" : ""} />
-              {loadingUsers ? "Refreshing..." : "Refresh"}
+            <button
+              className="button button-secondary"
+              onClick={() => { void loadUsers(); void loadAuditLogs(); }}
+              disabled={loadingUsers || loadingAudit}
+              title="Refresh records from database"
+            >
+              <RefreshCw size={14} className={loadingUsers || loadingAudit ? "animate-spin" : ""} />
+              {loadingUsers || loadingAudit ? "Refreshing..." : "Refresh"}
             </button>
             <button className="button button-secondary" disabled={exporting} onClick={handleExport}>
               <ArrowDownToLine size={14} />

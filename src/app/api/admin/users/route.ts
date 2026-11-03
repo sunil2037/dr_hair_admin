@@ -1,9 +1,19 @@
 import { cookies } from "next/headers";
 import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../_lib/backend";
 
-export async function GET(request: Request) {
+async function adminToken(request: Request) {
   const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  const cookieToken = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  if (cookieToken) return cookieToken;
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+    return authHeader.slice(7).trim();
+  }
+  return undefined;
+}
+
+export async function GET(request: Request) {
+  const token = await adminToken(request);
   if (!token) return noStoreJson({ message: "Sign in to view patient profiles." }, 401);
 
   const incomingUrl = new URL(request.url);

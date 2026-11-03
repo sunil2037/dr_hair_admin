@@ -3,8 +3,19 @@ import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../.
 
 type RouteContext = { params: Promise<{ userId: string }> };
 
-export async function GET(_request: Request, { params }: RouteContext) {
-  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+async function adminToken(request: Request) {
+  const cookieStore = await cookies();
+  const cookieToken = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  if (cookieToken) return cookieToken;
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+    return authHeader.slice(7).trim();
+  }
+  return undefined;
+}
+
+export async function GET(request: Request, { params }: RouteContext) {
+  const token = await adminToken(request);
   if (!token) return noStoreJson({ message: "Sign in to view patient details." }, 401);
   const { userId } = await params;
   try {
@@ -16,7 +27,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
-  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+  const token = await adminToken(request);
   if (!token) return noStoreJson({ message: "Sign in to update patient details." }, 401);
   const { userId } = await params;
   let body: unknown;
@@ -29,8 +40,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
-  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const token = await adminToken(request);
   if (!token) return noStoreJson({ message: "Sign in as Super Admin to delete user account." }, 401);
   const { userId } = await params;
   try {

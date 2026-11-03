@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSessionState } from "../../shared/lib/use-session-state";
 import { PageHeader } from "../../shared/components/ui";
 import { initialCoupons, initialProducts, initialReferrals } from "../lib/demo-data";
-import type { CouponRecord, ProductRecord, ProductStatus, ReferralRecord } from "../types";
+import type { CouponRecord, ProductRecord, ProductStatus, ReferralRecord, ProductBenefit, ProductIngredient, ProductUsageStep, ProductClinicalClaim } from "../types";
 import { CouponsPanel } from "./coupons-panel";
 import { CommerceOverview } from "./commerce-overview";
 import { ProductsPanel } from "./products-panel";
@@ -53,7 +53,7 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
         if (!res.ok) return;
         const items = body?.data?.items || body?.data;
         if (Array.isArray(items) && items.length > 0) {
-          const normalized: ProductRecord[] = items.map((raw: any) => {
+          const normalized: ProductRecord[] = items.map((raw: Record<string, unknown>) => {
             const rawStatus = String(raw.status || "active").toLowerCase();
             const status: ProductStatus =
               rawStatus === "archived"
@@ -62,12 +62,14 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
                 ? "Draft"
                 : "Active";
 
+            const rawImages = Array.isArray(raw.images) ? (raw.images as string[]) : [];
+
             return {
               id: String(raw.id),
-              name: raw.name || "Untitled Product",
-              sku: raw.sku || "DRH-001",
-              category: raw.category || "Hair",
-              description: raw.description || raw.subtitle || "",
+              name: String(raw.name || "Untitled Product"),
+              sku: String(raw.sku || "DRH-001"),
+              category: String(raw.category || "Hair"),
+              description: String(raw.description || raw.subtitle || ""),
               price: Number(raw.price) || 0,
               compareAtPrice: Number(raw.compareAtPrice || raw.compare_at_price) || 0,
               unitCost: Number(raw.unitCost || raw.unit_cost) || 0,
@@ -76,17 +78,33 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
               revenue: Number(raw.revenue) || 0,
               status,
               media: Array.isArray(raw.media) && raw.media.length > 0
-                ? raw.media
-                : (raw.images || []).map((img: string) => ({ name: img, kind: "image" as const })),
+                ? (raw.media as ProductRecord["media"])
+                : rawImages.map((img: string) => ({ name: img, kind: "image" as const })),
               rootCauses: Array.isArray(raw.rootCauses || raw.root_causes)
-                ? raw.rootCauses || raw.root_causes
-                : [raw.rootCause || raw.root_cause || "Hair"],
-              supplyPlans: raw.supplyPlans || raw.supply_plans || [],
-              benefits: raw.benefits || [],
-              ingredients: raw.ingredients || [],
-              usageSteps: raw.usageSteps || raw.usage_steps || [],
-              clinicalClaims: raw.clinicalClaims || raw.clinical_metrics || [],
-              updated: raw.updated || "Recently",
+                ? ((raw.rootCauses || raw.root_causes) as string[])
+                : [String(raw.rootCause || raw.root_cause || "Hair")],
+              supplyPlans: (raw.supplyPlans || raw.supply_plans || []) as ProductRecord["supplyPlans"],
+              benefits: Array.isArray(raw.benefits)
+                ? (raw.benefits as Array<ProductBenefit | string>).map((b) =>
+                    typeof b === "string" ? { title: b, description: "" } : b
+                  )
+                : undefined,
+              ingredients: Array.isArray(raw.ingredients)
+                ? (raw.ingredients as Array<ProductIngredient | string>).map((i) =>
+                    typeof i === "string" ? { name: i, concentration: "", purpose: "" } : i
+                  )
+                : undefined,
+              usageSteps: Array.isArray(raw.usageSteps || raw.usage_steps)
+                ? ((raw.usageSteps || raw.usage_steps) as Array<ProductUsageStep | string>).map((s) =>
+                    typeof s === "string" ? { title: s, description: "" } : s
+                  )
+                : undefined,
+              clinicalClaims: Array.isArray(raw.clinicalClaims || raw.clinical_metrics)
+                ? ((raw.clinicalClaims || raw.clinical_metrics) as Array<ProductClinicalClaim | string>).map((c) =>
+                    typeof c === "string" ? { percentage: "", claim: c, source: "" } : c
+                  )
+                : undefined,
+              updated: String(raw.updated || "Recently"),
             };
           });
 

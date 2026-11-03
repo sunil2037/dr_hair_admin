@@ -24,8 +24,6 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { Avatar, Modal, PageHeader, StatusPill, TableToolbar } from "../../shared/components/ui";
-import { useSessionState } from "../../shared/lib/use-session-state";
-import { bookings as initialBookings, patients as initialPatients } from "../../shared/lib/demo-data";
 import type { BookingRecord, PatientRecord } from "../../shared/types";
 import type { AdminPermissionId } from "../../shared/types";
 import { patientClinicalProfiles } from "../lib/patient-profiles";
@@ -75,7 +73,6 @@ function CareOperationsPage({
   initialDateFilter: string;
 }) {
   const router = useRouter();
-  const [demoPatients] = useSessionState<PatientRecord[]>("drhair-demo-patients", initialPatients);
   const isPatient = kind === "patients";
   const [apiPatients, setApiPatients] = useState<PatientRecord[]>([]);
   const [apiPatientTotal, setApiPatientTotal] = useState(0);
@@ -83,28 +80,18 @@ function CareOperationsPage({
   const [apiPatientState, setApiPatientState] = useState<"loading" | "ready" | "error">("loading");
   const [apiPatientError, setApiPatientError] = useState("");
   const [reloadPatients, setReloadPatients] = useState(0);
-  const patients = isPatient ? apiPatients : demoPatients;
+  const patients = apiPatients;
 
-  const [demoBookings, setDemoBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
   const [apiBookings, setApiBookings] = useState<BookingRecord[]>([]);
   const [reloadBookings, setReloadBookings] = useState(0);
-  const bookings = apiBookings.length > 0 ? apiBookings : demoBookings;
-  const setBookings = (updater: BookingRecord[] | ((current: BookingRecord[]) => BookingRecord[])) => {
-    setDemoBookings((curr) => {
-      const next = typeof updater === "function" ? updater(bookings) : updater;
-      return next;
-    });
-    setApiBookings((curr) => {
-      const next = typeof updater === "function" ? updater(bookings) : updater;
-      return next;
-    });
-  };
+  const bookings = apiBookings;
+  const profiles = patientClinicalProfiles;
 
-  const [profiles] = useSessionState("drhair-demo-patient-profiles", patientClinicalProfiles);
   const [query, setQuery] = useState("");
   const [triageFilter, setTriageFilter] = useState<TriageFilter>("all");
   const [dialog, setDialog] = useState<BookingRecord | null>(null);
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [submittingAppointment, setSubmittingAppointment] = useState(false);
   const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
   const [appointmentPatientId, setAppointmentPatientId] = useState("");
   const [appointmentService, setAppointmentService] = useState("Clinic consultation");
@@ -115,12 +102,8 @@ function CareOperationsPage({
   const [printingSlipBooking, setPrintingSlipBooking] = useState<BookingRecord | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [holidayToReopen, setHolidayToReopen] = useState<string | null>(null);
-  const [clinicHolidays, setClinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", [
-    "2026-11-01",
-    "2026-11-02",
-    "2026-12-25",
-    "2027-01-26",
-  ]);
+  const [clinicHolidays, setClinicHolidays] = useState<string[]>([]);
+  const [reloadHolidays, setReloadHolidays] = useState(0);
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentSlot, setAppointmentSlot] = useState("10:30 AM");
@@ -141,27 +124,25 @@ function CareOperationsPage({
         if (!response.ok) return;
         const data = result.data && typeof result.data === "object" ? result.data : {};
         const items = Array.isArray(data.items) ? data.items : [];
-        if (items.length > 0) {
-          setApiBookings(items.map((item: Record<string, unknown>) => ({
-            id: String(item.id ?? ""),
-            customer: String(item.customer || item.name || "Patient"),
-            patientId: String(item.patientId || item.patient_code || item.userId || ""),
-            patientCode: typeof item.patient_code === "string" ? item.patient_code : undefined,
-            service: String(item.service || item.reason || "Clinic consultation"),
-            date: String(item.date || ""),
-            startsAt: typeof item.startsAt === "string" ? item.startsAt : (typeof item.starts_at === "string" ? item.starts_at : undefined),
-            status: (item.status || item.opdStatus || "Requested") as BookingRecord["status"],
-            source: (item.source || "App") as BookingRecord["source"],
-            doctorName: String(item.doctorName || item.doctor_name || "Dr. Jai Bansal"),
-            room: typeof item.room === "string" ? item.room : "Room 101 - Chamber A",
-            tokenNumber: typeof item.tokenNumber === "string" ? item.tokenNumber : (typeof item.opd_token === "string" ? item.opd_token : undefined),
-            opdStatus: (item.status || item.opdStatus || "Confirmed") as BookingRecord["opdStatus"],
-            consultationFee: typeof item.consultationFee === "number" ? item.consultationFee : (typeof item.consultation_fee === "number" ? item.consultation_fee : 500),
-            paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
-            paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
-            paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
-          })));
-        }
+        setApiBookings(items.map((item: Record<string, unknown>) => ({
+          id: String(item.id ?? ""),
+          customer: String(item.customer || item.name || "Patient"),
+          patientId: String(item.patientId || item.patient_code || item.userId || ""),
+          patientCode: typeof item.patient_code === "string" ? item.patient_code : undefined,
+          service: String(item.service || item.reason || "Clinic consultation"),
+          date: String(item.date || ""),
+          startsAt: typeof item.startsAt === "string" ? item.startsAt : (typeof item.starts_at === "string" ? item.starts_at : undefined),
+          status: (item.status || item.opdStatus || "Requested") as BookingRecord["status"],
+          source: (item.source || "App") as BookingRecord["source"],
+          doctorName: String(item.doctorName || item.doctor_name || "Dr. Jai Bansal"),
+          room: typeof item.room === "string" ? item.room : "Room 101 - Chamber A",
+          tokenNumber: typeof item.tokenNumber === "string" ? item.tokenNumber : (typeof item.opd_token === "string" ? item.opd_token : undefined),
+          opdStatus: (item.status || item.opdStatus || "Confirmed") as BookingRecord["opdStatus"],
+          consultationFee: typeof item.consultationFee === "number" ? item.consultationFee : (typeof item.consultation_fee === "number" ? item.consultation_fee : 500),
+          paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
+          paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
+          paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
+        })));
       } catch {
         // Retain current bookings state
       }
@@ -173,13 +154,29 @@ function CareOperationsPage({
   }, [isPatient, reloadBookings]);
 
   useEffect(() => {
-    if (!isPatient) return;
+    if (isPatient) return;
+    const controller = new AbortController();
+    fetch("/api/admin/appointments/closed-dates", { cache: "no-store", signal: controller.signal })
+      .then((res) => res.json())
+      .then((result) => {
+        const items = result?.data?.items;
+        if (Array.isArray(items)) {
+          setClinicHolidays(items.map((item: Record<string, unknown>) => String(item.date || "")));
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [isPatient, reloadHolidays]);
+
+  useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
-      setApiPatientState("loading");
-      setApiPatientError("");
-      const params = new URLSearchParams({ page: String(patientPage), limit: "50" });
-      if (apiSearch) params.set("search", apiSearch);
+      if (isPatient) {
+        setApiPatientState("loading");
+        setApiPatientError("");
+      }
+      const params = new URLSearchParams({ page: String(isPatient ? patientPage : 1), limit: isPatient ? "50" : "100" });
+      if (isPatient && apiSearch) params.set("search", apiSearch);
       try {
         const response = await fetch(`/api/admin/users?${params.toString()}`, {
           cache: "no-store",
@@ -210,11 +207,13 @@ function CareOperationsPage({
           };
         }));
         setApiPatientTotal(typeof data.total === "number" ? data.total : items.length);
-        setApiPatientState("ready");
+        if (isPatient) setApiPatientState("ready");
       } catch (error) {
         if (controller.signal.aborted) return;
-        setApiPatientError(error instanceof Error ? error.message : "Patient profiles could not be loaded.");
-        setApiPatientState("error");
+        if (isPatient) {
+          setApiPatientError(error instanceof Error ? error.message : "Patient profiles could not be loaded.");
+          setApiPatientState("error");
+        }
       }
     }, 250);
     return () => {
@@ -223,7 +222,7 @@ function CareOperationsPage({
     };
   }, [apiSearch, isPatient, patientPage, reloadPatients]);
 
-  const addClinicHoliday = () => {
+  const addClinicHoliday = async () => {
     if (!newHolidayDate) {
       onToast("Please select a date to add as an official clinic holiday.");
       return;
@@ -232,32 +231,89 @@ function CareOperationsPage({
       onToast("Bookings are already closed for this date.");
       return;
     }
-    const affectedCount = bookings.filter((booking) => bookingDateKey(booking) === newHolidayDate && !["Cancelled", "Completed", "No show"].includes(booking.status)).length;
-    setClinicHolidays((current) => [...current, newHolidayDate].sort());
-    onAudit("added clinic holiday", newHolidayDate);
-    onToast(affectedCount
-      ? `New bookings are blocked. ${affectedCount} existing appointment${affectedCount === 1 ? "" : "s"} remain; reschedule them below.`
-      : `New bookings are blocked for ${formatDateKey(newHolidayDate)}.`);
-    setNewHolidayDate("");
+    try {
+      const response = await fetch("/api/admin/appointments/closed-dates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: newHolidayDate, reason: "Clinic closed" }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || "Could not close this clinic date.");
+        return;
+      }
+      onAudit("added clinic holiday", newHolidayDate);
+      onToast(result.message || `New bookings are blocked for ${formatDateKey(newHolidayDate)}.`);
+      setNewHolidayDate("");
+      setReloadHolidays((c) => c + 1);
+    } catch {
+      onToast("Could not close this clinic date.");
+    }
   };
 
-  const removeClinicHoliday = (date: string) => {
-    setClinicHolidays((current) => current.filter((d) => d !== date));
-    onAudit("removed clinic holiday", date);
-    onToast(`Clinic holiday removed: ${date}`);
+  const removeClinicHoliday = async (date: string) => {
+    try {
+      const response = await fetch(`/api/admin/appointments/closed-dates/${encodeURIComponent(date)}`, {
+        method: "DELETE",
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || `Could not reopen clinic date: ${date}`);
+        return;
+      }
+      onAudit("removed clinic holiday", date);
+      onToast(result.message || `Clinic holiday removed: ${date}`);
+      setReloadHolidays((c) => c + 1);
+    } catch {
+      onToast(`Could not reopen clinic date: ${date}`);
+    }
   };
 
-  const updateOpdStatus = (bookingId: string, nextOpdStatus: NonNullable<BookingRecord["opdStatus"]>) => {
-    const mainStatus = nextOpdStatus === "Completed" ? "Completed" : nextOpdStatus === "No show" ? "No show" : "Active";
-    setBookings((current) =>
-      current.map((item) => {
-        if (item.id !== bookingId) return item;
-        return { ...item, opdStatus: nextOpdStatus, status: mainStatus };
-      })
-    );
-    setDialog((current) => current?.id === bookingId ? { ...current, opdStatus: nextOpdStatus, status: mainStatus } : current);
-    onAudit(`updated OPD status to ${nextOpdStatus}`, `Booking ${bookingId}`);
-    onToast(`Patient OPD status updated: ${nextOpdStatus}`);
+  const updateOpdStatus = async (bookingId: string, nextOpdStatus: NonNullable<BookingRecord["opdStatus"]>) => {
+    try {
+      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(bookingId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextOpdStatus }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || "Could not update OPD status.");
+        return;
+      }
+      const mainStatus: BookingRecord["status"] = nextOpdStatus === "Completed" ? "Completed" : nextOpdStatus === "No show" ? "No show" : "Active";
+      setDialog((current) => current?.id === bookingId ? { ...current, opdStatus: nextOpdStatus, status: mainStatus } : current);
+      onAudit(`updated OPD status to ${nextOpdStatus}`, `Booking ${bookingId}`);
+      onToast(`Patient OPD status updated: ${nextOpdStatus}`);
+      setReloadBookings((c) => c + 1);
+    } catch {
+      onToast("Network error updating OPD status.");
+    }
+  };
+
+  const markFeePaid = async (bookingId: string) => {
+    try {
+      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(bookingId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_status: "Paid" }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || "Could not update payment status.");
+        return;
+      }
+      setDialog((current) => current?.id === bookingId ? { ...current, paymentStatus: "Paid" } : null);
+      onAudit("marked appointment payment as Paid", `Booking ${bookingId}`);
+      onToast("Appointment marked as Paid.");
+      setReloadBookings((c) => c + 1);
+    } catch {
+      onToast("Network error updating payment status.");
+    }
   };
 
   const canViewClinicalPatients = permissions.some((permission) => ["patients.view", "assessments.review", "progress.review", "care-plans.edit"].includes(permission));
@@ -292,7 +348,7 @@ function CareOperationsPage({
       else if (triageFilter === "needs-regimen") {
         matchesTriage = !profile?.prescriptionPlan || item.status === "Review" || item.status === "Pending";
       } else if (triageFilter === "pending-checkins") {
-        matchesTriage = Boolean(profile?.progress?.some((p) => !p.doctorReviewed));
+        matchesTriage = Boolean(profile?.progress?.some((p: { doctorReviewed?: boolean }) => !p.doctorReviewed));
       } else if (triageFilter === "active-regimen") {
         matchesTriage = Boolean(profile?.prescriptionPlan);
       }
@@ -341,17 +397,32 @@ function CareOperationsPage({
     />;
   }
 
-  const updateBookingStatus = (status: "Completed" | "Active" | "Cancelled" | "No show") => {
+  const updateBookingStatus = async (status: "Completed" | "Active" | "Cancelled" | "No show") => {
     if (!dialog) return;
     if (["Cancelled", "Completed", "No show"].includes(dialog.status)) return;
     if (status === "No show" && dialog.startsAt && new Date(dialog.startsAt).getTime() > Date.now()) {
       onToast("A future appointment cannot be marked as no show.");
       return;
     }
-    setBookings((current) => current.map((item) => (item.id === dialog.id ? { ...item, status } : item)));
-    onAudit("updated clinic appointment", `${dialog.id} · ${status}`);
-    onToast(`Appointment updated to ${status}.`);
-    setDialog(null);
+    try {
+      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(dialog.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || "Could not update appointment status.");
+        return;
+      }
+      onAudit("updated clinic appointment", `${dialog.id} · ${status}`);
+      onToast(`Appointment updated to ${status}.`);
+      setDialog(null);
+      setReloadBookings((c) => c + 1);
+    } catch {
+      onToast("Network error updating appointment status.");
+    }
   };
 
   const handleOpenPatientFromBooking = (appointment: BookingRecord) => {
@@ -368,7 +439,7 @@ function CareOperationsPage({
     router.push(`/patients/${encodeURIComponent(matched.patientCode || matched.id)}`);
   };
 
-  const createAppointment = () => {
+  const handleCreateAppointment = async () => {
     const patient = patients.find((item) => item.id === appointmentPatientId);
     if (!patient || !appointmentDate || !appointmentSlot) {
       onToast("Choose a patient, visit date and sitting time slot.");
@@ -388,48 +459,61 @@ function CareOperationsPage({
 
     const start = appointmentSlotStart(appointmentDate, appointmentSlot);
 
-    if (start.getTime() <= Date.now()) {
+    if (currentTime && start.getTime() <= currentTime) {
       onToast("Selected sitting slot has already passed.");
       return;
     }
 
-    const occupied = bookings.some((booking) => booking.id !== editingAppointmentId && booking.startsAt && new Date(booking.startsAt).getTime() === start.getTime() && !["Cancelled", "No show"].includes(booking.status));
-    if (occupied) {
-      onToast("This sitting slot is already booked. Choose another time.");
-      return;
-    }
-
-    const id = editingAppointmentId ?? `APT-${Date.now().toString().slice(-5)}`;
     const reason = appointmentService.trim() || "General hair & scalp consultation";
-    const next: BookingRecord = {
-      id,
-      patientId: patient.id,
-      customer: patient.name,
-      service: reason,
-      startsAt: start.toISOString(),
-      date: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(start),
-      source: appointmentSource,
-      status: "Active",
-      type: "Physical Clinic Visit",
-      doctorName: "Dr. Jai Bansal",
-      room: "Room 101 - Chamber A",
-      tokenNumber: `OPD-${(bookings.length + 1).toString().padStart(2, "0")}`,
-      opdStatus: "Confirmed",
-    };
+    setSubmittingAppointment(true);
 
-    setBookings((current) => editingAppointmentId ? current.map((item) => item.id === id ? next : item) : [next, ...current]);
-    onAudit(editingAppointmentId ? "rescheduled clinic appointment" : "created clinic appointment", `${id} · ${patient.id}`);
-    onToast(editingAppointmentId ? "Appointment rescheduled with Dr. Jai Bansal." : "OPD clinic appointment scheduled with Dr. Jai Bansal.");
-    setShowAppointmentForm(false);
-    setEditingAppointmentId(null);
-    setAppointmentPatientId("");
-    setAppointmentDate("");
-    setAppointmentSlot("10:30 AM");
-    setAppointmentService("Clinic consultation");
-    setAppointmentSource("Phone");
-    setBookingDateRange("upcoming");
-    setBookingDateFilter("");
-    setStatusFilter("All status");
+    try {
+      if (editingAppointmentId) {
+        const response = await fetch(`/api/admin/appointments/${encodeURIComponent(editingAppointmentId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "reschedule", starts_at: start.toISOString() }),
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          onToast(result.message || "Could not reschedule appointment.");
+          return;
+        }
+        onAudit("rescheduled clinic appointment", `${editingAppointmentId} · ${patient.id}`);
+        onToast("Appointment rescheduled with Dr. Jai Bansal.");
+      } else {
+        const response = await fetch("/api/admin/appointments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patient_id: patient.id,
+            starts_at: start.toISOString(),
+            reason,
+            source: appointmentSource,
+          }),
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          onToast(result.message || "Could not schedule appointment.");
+          return;
+        }
+        const createdId = result?.data?.id || "new";
+        onAudit("created clinic appointment", `${createdId} · ${patient.id}`);
+        onToast("OPD clinic appointment scheduled with Dr. Jai Bansal.");
+      }
+
+      setReloadBookings((c) => c + 1);
+      closeAppointmentForm();
+      setBookingDateRange("upcoming");
+      setBookingDateFilter("");
+      setStatusFilter("All status");
+    } catch {
+      onToast("Network error scheduling appointment.");
+    } finally {
+      setSubmittingAppointment(false);
+    }
   };
 
   const openAppointmentForm = () => {
@@ -649,8 +733,8 @@ function CareOperationsPage({
                   const latestDiagnosis = profile?.diagnoses[0];
                   const prescription = profile?.prescriptionPlan;
                   const photos = profile?.assessmentAnswers?.photos || [];
-                  const uploadedPhotosCount = photos.filter((p) => p.status === "Uploaded").length;
-                  const unreviewedCheckIn = profile?.progress?.find((p) => !p.doctorReviewed);
+                  const uploadedPhotosCount = photos.filter((p: { status?: string }) => p.status === "Uploaded").length;
+                  const unreviewedCheckIn = profile?.progress?.find((p: { doctorReviewed?: boolean }) => !p.doctorReviewed);
 
                   return (
                     <tr
@@ -772,7 +856,7 @@ function CareOperationsPage({
               ? `Showing ${filteredPatients.length} of ${patients.length} patient records`
               : `${filteredBookings.length} ${bookingDateFilter ? `appointment${filteredBookings.length === 1 ? "" : "s"} · ${formatDateKey(bookingDateFilter)}` : bookingDateRange === "past" ? "past appointment" : bookingDateRange === "upcoming" ? "upcoming appointment" : "appointment"}${!bookingDateFilter && filteredBookings.length !== 1 ? "s" : ""}`}
           </span>
-          <span>{isPatient ? "Trichology EMR Portal" : "Demo preview · saved in this browser session"}</span>
+          <span>{isPatient ? "Trichology EMR Portal" : "Live Clinic Operations"}</span>
         </div>
       </section>
 
@@ -840,11 +924,7 @@ function CareOperationsPage({
               {dialog.paymentStatus !== "Paid" && !['Cancelled', 'Completed', 'No show'].includes(dialog.status) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setBookings((current) => current.map((item) => (item.id === dialog.id ? { ...item, paymentStatus: "Paid" } : item)));
-                    setDialog((current) => current ? { ...current, paymentStatus: "Paid" } : null);
-                    onAudit("marked appointment payment as Paid", `Booking ${dialog.id}`);
-                  }}
+                  onClick={() => { void markFeePaid(dialog.id); }}
                   className="button button-primary"
                 >
                   Mark fee paid (₹{dialog.consultationFee ?? 500})
@@ -859,10 +939,10 @@ function CareOperationsPage({
         <Modal
           title={editingAppointmentId ? "Reschedule In-Clinic Appointment" : "Add Physical Clinic Appointment"}
           description="Book an in-person OPD consultation with Dr. Jai Bansal at Room 101."
-          submitLabel={editingAppointmentId ? "Save New OPD Slot" : "Confirm Visit & Issue Token"}
-          submitDisabled={!appointmentPatientId || !appointmentDate || !appointmentSlot || isSundayDateKey(appointmentDate) || clinicHolidays.includes(appointmentDate) || isSlotBooked(appointmentDate, appointmentSlot) || appointmentSlotStart(appointmentDate, appointmentSlot).getTime() <= currentTime}
+          submitLabel={editingAppointmentId ? (submittingAppointment ? "Saving…" : "Save New OPD Slot") : (submittingAppointment ? "Booking…" : "Confirm Visit & Issue Token")}
+          submitDisabled={submittingAppointment || !appointmentPatientId || !appointmentDate || !appointmentSlot || isSundayDateKey(appointmentDate) || clinicHolidays.includes(appointmentDate) || isSlotBooked(appointmentDate, appointmentSlot) || appointmentSlotStart(appointmentDate, appointmentSlot).getTime() <= currentTime}
           onClose={closeAppointmentForm}
-          onSubmit={createAppointment}
+          onSubmit={handleCreateAppointment}
         >
           <div className="space-y-3">
             <div className="p-2.5 bg-[#F0F7FF] border border-[#D6E0FC] rounded-lg flex items-center gap-2 text-xs text-[#1A365D]">
@@ -1167,7 +1247,7 @@ function PatientSummary({ patients, profiles, clinicalAccess }: { patients: Pati
     0
   );
   const pendingCheckIns = patientProfiles.reduce(
-    (sum, profile) => sum + profile.progress.filter((p) => !p.doctorReviewed).length,
+    (sum, profile) => sum + profile.progress.filter((p: { doctorReviewed?: boolean }) => !p.doctorReviewed).length,
     0
   );
   const needsRegimen = patientProfiles.filter((profile) => !profile.prescriptionPlan).length;

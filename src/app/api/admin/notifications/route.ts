@@ -8,8 +8,16 @@ async function adminToken() {
 export async function GET(request: Request) {
   const token = await adminToken();
   const { searchParams } = new URL(request.url);
-  const queryString = searchParams.toString();
-  const path = queryString ? `/api/v1/admin/notifications/history?${queryString}` : "/api/v1/admin/notifications/history";
+  const action = searchParams.get("action");
+
+  let path = "/api/v1/admin/notifications/history";
+  if (action === "audience-count") {
+    const audience = searchParams.get("audience") || "All app users";
+    path = `/api/v1/admin/notifications/audience-count?audience=${encodeURIComponent(audience)}`;
+  } else {
+    const queryString = searchParams.toString();
+    path = queryString ? `/api/v1/admin/notifications/history?${queryString}` : "/api/v1/admin/notifications/history";
+  }
 
   try {
     const upstream = await fetch(backendUrl(path), {
@@ -29,16 +37,20 @@ export async function POST(request: Request) {
   const token = await adminToken();
   if (!token) return noStoreJson({ message: "Sign in to manage notifications." }, 401);
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
     body = await request.json();
   } catch {
     return noStoreJson({ message: "Send notification details as JSON." }, 400);
   }
 
-  const endpoint = body?.user_id
+  let endpoint = body?.user_id
     ? "/api/v1/admin/notifications/send-to-user"
     : "/api/v1/admin/notifications/broadcast";
+
+  if (body?.action === "cancel" && body?.campaign_id) {
+    endpoint = `/api/v1/admin/notifications/campaigns/${body.campaign_id}/cancel`;
+  }
 
   try {
     const upstream = await fetch(backendUrl(endpoint), {

@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, CalendarClock, CircleAlert, Link2, Send, Sparkles, X } from "lucide-react";
+import { BellRing, CalendarClock, Link2, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StatusPill } from "../../shared/components/ui";
 
@@ -44,21 +44,50 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
   const [scheduledAt, setScheduledAt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [liveAudienceCounts, setLiveAudienceCounts] = useState<Record<Audience, number>>({
+    "All app users": 0,
+    "Active patients": 0,
+    "Patients with a shared report": 0,
+  });
+
+  useEffect(() => {
+    fetch(`/api/admin/notifications?action=audience-count&audience=${encodeURIComponent(audience)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.data?.targetCount != null) {
+          setLiveAudienceCounts((prev) => ({
+            ...prev,
+            [audience]: data.data.targetCount,
+          }));
+        }
+      })
+      .catch(() => {});
+  }, [audience]);
 
   useEffect(() => {
     fetch("/api/admin/notifications?page=1&limit=20")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.data?.items && Array.isArray(data.data.items) && data.data.items.length > 0) {
-          const mapped: NotificationRecord[] = data.data.items.map((item: any) => ({
-            id: item.id || `NTF-${item._id?.slice(-5) || "001"}`,
-            title: item.title,
-            message: item.body,
-            audience: (item.audience as Audience) || "All app users",
-            status: "Sent",
-            createdAt: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.created_at || Date.now())),
-            destination: item.destination,
-          }));
+          const mapped: NotificationRecord[] = data.data.items.map((item: Record<string, unknown>) => {
+            const rawStatus = String(item.status || "Sent");
+            const status: NotificationStatus =
+              rawStatus.toLowerCase() === "scheduled" ? "Scheduled"
+              : rawStatus.toLowerCase() === "cancelled" ? "Cancelled"
+              : rawStatus.toLowerCase() === "failed" ? "Queued"
+              : "Sent";
+
+            return {
+              id: String(item.id || (typeof item._id === "string" ? `NTF-${item._id.slice(-5)}` : "001")),
+              title: String(item.title || ""),
+              message: String(item.body || ""),
+              audience: (item.audience as Audience) || "All app users",
+              status,
+              createdAt: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date((typeof item.created_at === "string" || typeof item.created_at === "number") ? item.created_at : Date.now())),
+              scheduledAt: item.scheduledAt ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.scheduledAt as string)) : undefined,
+              destination: typeof item.destination === "string" ? item.destination : undefined,
+            };
+          });
           setRecords(mapped);
         }
       })
@@ -90,6 +119,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
       body: cleanMessage,
       audience,
       destination: destinationPayload,
+      scheduled_at: scheduleMode === "later" ? new Date(scheduledAt).toISOString() : null,
       data: {
         destination_type: destinationPayload.type,
         ...(deepLink === "product" ? { entity_id: productId.trim() } : { screen: deepLink }),
@@ -106,24 +136,32 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
 
       const json = await res.json().catch(() => ({}));
 
+      if (!res.ok) {
+        onToast(json?.message || "Could not process notification. Please try again.");
+        return;
+      }
+
+      const campaign = json?.data?.campaign;
+      const isScheduled = json?.data?.is_scheduled || scheduleMode === "later";
       const record: NotificationRecord = {
-        id: json?.data?.notification?.id || `NTF-${Date.now().toString().slice(-5)}`,
+        id: campaign?.id || json?.data?.notification?.id || `NTF-${Date.now().toString().slice(-5)}`,
         title: cleanTitle,
         message: cleanMessage,
         audience,
-        status: scheduleMode === "later" ? "Scheduled" : "Sent",
+        status: isScheduled ? "Scheduled" : "Sent",
         createdAt: "Just now",
-        scheduledAt: scheduleMode === "later" ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(scheduledAt)) : undefined,
+        scheduledAt: isScheduled && scheduledAt ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(scheduledAt)) : undefined,
         destination: destinationPayload,
       };
 
       setRecords((current) => [record, ...current]);
-      onAudit("sent push notification", cleanTitle);
+      onAudit(isScheduled ? "scheduled push notification" : "sent push notification", cleanTitle);
       
-      const sentCount = json?.data?.sent != null ? json.data.sent : 0;
-      onToast(sentCount > 0 
-        ? `Push notification sent to ${sentCount} device(s).` 
-        : "Push notification created and broadcast to inboxes.");
+      onToast(isScheduled
+        ? "Notification campaign scheduled successfully."
+        : (json?.data?.sent != null && json.data.sent > 0
+          ? `Push notification sent to ${json.data.sent} device(s).`
+          : "Push notification created and dispatched."));
 
       setTitle("");
       setMessage("");
@@ -135,10 +173,19 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
     }
   };
 
-  const cancel = (record: NotificationRecord) => {
-    setRecords((current) => current.map((item) => (item.id === record.id ? { ...item, status: "Cancelled" } : item)));
-    onAudit("cancelled app notification", record.title);
-    onToast("Scheduled notification cancelled.");
+  const cancel = async (record: NotificationRecord) => {
+    try {
+      await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", campaign_id: record.id }),
+      });
+      setRecords((current) => current.map((item) => (item.id === record.id ? { ...item, status: "Cancelled" } : item)));
+      onAudit("cancelled app notification", record.title);
+      onToast("Scheduled notification cancelled.");
+    } catch {
+      onToast("Could not cancel notification. Please try again.");
+    }
   };
 
   return (
@@ -192,7 +239,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
                   <option>Active patients</option>
                   <option>Patients with a shared report</option>
                 </select>
-                <small>Targets: {audienceCounts[audience].toLocaleString("en-IN")} patients</small>
+                <small>Targets: {(liveAudienceCounts[audience] ?? audienceCounts[audience]).toLocaleString("en-IN")} patients</small>
               </label>
 
               <label className="field">

@@ -106,6 +106,9 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
   const [previewingReport, setPreviewingReport] = useState<string | null>(null);
   const [photoToDelete, setPhotoToDelete] = useState<{ assessmentId: string; photoIndex: number; fileName: string } | null>(null);
   const [deletingScalpPhoto, setDeletingScalpPhoto] = useState<string | null>(null);
+  const [reviewingCheckIn, setReviewingCheckIn] = useState<ProgressCheckIn | null>(null);
+  const [reviewNote, setReviewNote] = useState("");
+  const [savingReview, setSavingReview] = useState(false);
   const canWrite = role === "super-admin";
 
   const loadPatient = useCallback(async (signal?: AbortSignal) => {
@@ -360,6 +363,29 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
     } finally { setDeletingScalpPhoto(null); }
   };
 
+  const submitCheckInReview = async () => {
+    if (!reviewingCheckIn) return;
+    setSavingReview(true);
+    try {
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(patientId)}/progress-checkins/${encodeURIComponent(reviewingCheckIn.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctor_note: reviewNote.trim(), is_doctor_reviewed: true }),
+        cache: "no-store",
+      });
+      const result: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(messageFrom(result, "Could not save clinician review."));
+      onToast("Progress check-in review saved.");
+      onAudit("reviewed patient progress check-in", `${patient.patient_code || patientId} · Check-in ${reviewingCheckIn.id}`);
+      setReviewingCheckIn(null);
+      await loadPatient();
+    } catch (cause) {
+      onToast(cause instanceof Error ? cause.message : "Could not save clinician review.");
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
   const updateReportVisibility = async (report: Report) => {
     if (!canWrite) return;
     const visibility = report.visibility === "Shared" ? "Private" : "Shared";
@@ -569,6 +595,18 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
             <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="text-sm font-semibold text-[#1A365D]">{formatDate(checkIn.date)}</h3><p className="mt-1 text-[11px] text-slate-500">{[checkIn.scalp_region || "Scalp", checkIn.shedding_level || "Shedding not recorded"].join(" · ")}</p></div><span className="rounded-full bg-teal-50 px-2.5 py-1 text-[10px] font-semibold text-teal-800">Density {checkIn.density_rating ?? "—"}/5</span></div>
             {checkIn.notes && <p className="mt-3 whitespace-pre-wrap break-words text-xs leading-5 text-slate-700">{checkIn.notes}</p>}
             {checkIn.doctor_note && <div className="mt-3 rounded-xl border border-teal-100 bg-teal-50/60 px-3 py-2.5"><p className="text-[9px] font-bold uppercase tracking-wide text-teal-800">Clinician note{checkIn.is_doctor_reviewed ? " · Reviewed" : ""}</p><p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-teal-950">{checkIn.doctor_note}</p></div>}
+            <div className="mt-2.5 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewingCheckIn(checkIn);
+                  setReviewNote(checkIn.doctor_note || "");
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-800"
+              >
+                <FileText size={13} /> {checkIn.doctor_note ? "Edit clinician note" : "Add clinician note"}
+              </button>
+            </div>
             {checkIn.photos?.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">{checkIn.photos.map((photo, index) => {
               const photoUrl = photo.url?.startsWith("https://") ? photo.url : undefined;
               const name = photo.file_name || `${patientCode}-progress-${checkIn.id}-${photo.angle || index + 1}.jpg`;
@@ -666,6 +704,32 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
       <label className="block text-xs font-semibold text-slate-600">Report name<input autoFocus maxLength={160} value={reportTitle} onChange={(event) => setReportTitle(event.target.value)} placeholder="e.g. Blood test results" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal" disabled={uploadingReport} /></label>
       <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-[#FAFBFD] p-4 transition hover:border-teal-400"><input id="patient-report-file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="sr-only" disabled={uploadingReport} onChange={(event) => setReportFile(event.target.files?.[0] ?? null)} /><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white text-teal-700 shadow-sm"><UploadCloud size={19} /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-700">{reportFile?.name || "Choose a report file"}</span><span className="mt-1 block text-[10px] text-slate-400">PDF, JPG, PNG or WebP · up to 10 MB</span></span>{reportFile && <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-white hover:text-slate-700" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setReportFile(null); const input = document.getElementById("patient-report-file") as HTMLInputElement | null; if (input) input.value = ""; }} aria-label="Remove selected file"><X size={15} /></button>}</label>
     </Modal>}
+
+    {reviewingCheckIn && (
+      <Modal
+        title="Clinician progress review"
+        description={`Add clinical observation or advice for check-in on ${formatDate(reviewingCheckIn.date)}.`}
+        submitLabel={savingReview ? "Saving…" : "Save review"}
+        submitDisabled={savingReview}
+        onClose={() => setReviewingCheckIn(null)}
+        onSubmit={() => { void submitCheckInReview(); }}
+      >
+        <label className="block text-xs font-semibold text-slate-600">
+          Clinician note
+          <textarea
+            autoFocus
+            rows={4}
+            maxLength={2000}
+            className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm font-normal text-slate-800 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            placeholder="e.g. Scalp density improved. Maintain minoxidil application routine as advised."
+            value={reviewNote}
+            disabled={savingReview}
+            onChange={(e) => setReviewNote(e.target.value)}
+          />
+        </label>
+        <p className="mt-2 text-[11px] text-slate-400">This clinician note will be saved to the patient record and displayed in the patient timeline.</p>
+      </Modal>
+    )}
   </main>;
 }
 

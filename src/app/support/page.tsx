@@ -3,16 +3,12 @@
 import { useState } from "react";
 import { LegalShell } from "@/features/legal/components/legal-shell";
 import {
-  ArrowRight,
   CheckCircle,
-  Clock,
   HelpCircle,
   Mail,
-  MapPin,
   MessageCircle,
   Phone,
   Send,
-  ShieldCheck,
 } from "lucide-react";
 
 const TOC = [

@@ -44,6 +44,14 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   const [clinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", ["2026-11-01", "2026-11-02", "2026-12-25", "2027-01-26"]);
   const [selectedAppointmentDate, setSelectedAppointmentDate] = useState(() => startOfToday());
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
+  const [serverSummary, setServerSummary] = useState<{
+    patients?: { total?: number };
+    appointments?: { total?: number; today?: number; pending?: number; confirmed?: number; completed?: number };
+    assessments?: { total?: number; pending?: number };
+    reports?: { total?: number; shared?: number };
+    catalog?: { totalProducts?: number; lowStockProducts?: number };
+    recentActivity?: Array<{ id: string; who: string; action: string; target: string; type: string; time: string }>;
+  } | null>(null);
   const [registeredPatients, setRegisteredPatients] = useState<RegisteredPatient[]>([]);
   const [registeredPatientTotal, setRegisteredPatientTotal] = useState(0);
   const [registeredPatientsState, setRegisteredPatientsState] = useState<"loading" | "ready" | "error">("loading");
@@ -77,6 +85,23 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
     });
     return () => window.cancelAnimationFrame(frame);
   }, [anchor]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadSummary = async () => {
+      try {
+        const response = await fetch("/api/admin/dashboard/summary", { cache: "no-store", signal: controller.signal });
+        const result = await response.json().catch(() => ({}));
+        if (response.ok && result?.data) {
+          setServerSummary(result.data);
+        }
+      } catch {
+        // Fallback silently to session state
+      }
+    };
+    void loadSummary();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     if (!canViewPatients) return;
@@ -151,12 +176,12 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   const largestQueue = Math.max(1, ...queueBars.map((item) => item.count));
   return <main className="page-wrap dashboard-bento mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
     <PageHeader eyebrow={isSuper ? "Super Admin · Clinical overview" : "Admin workspace"} title={`Welcome, ${userName}`} description="A current view of this clinic’s patient care, consultations, reports, and operations." />
-    <div className="notice mb-4 flex items-start gap-2.5"><Clock3 size={14} className="mt-0.5 shrink-0" /><span><strong>Preview workspace</strong> · Patient totals and directory load from the admin API. Appointment, assessment, order, and report queues use sample records saved in this browser session.</span></div>
+    <div className="notice mb-4 flex items-start gap-2.5"><Clock3 size={14} className="mt-0.5 shrink-0" /><span><strong>{serverSummary ? "Live workspace" : "Preview workspace"}</strong> · {serverSummary ? "Authoritative clinical metrics and patient directory loaded from Dr. Hair API." : "Patient totals and directory load from the admin API. Appointment, assessment, order, and report queues use sample records saved in this browser session."}</span></div>
     <section className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Overview metrics">
-      <Kpi icon={<UsersRound size={16} />} label="Patient records" value={!permitted("patients.view") ? "—" : registeredPatientsState === "ready" ? String(registeredPatientTotal) : registeredPatientsState === "loading" ? "…" : "—"} trend={permitted("patients.view") ? "Live directory" : "No access"} foot={permitted("patients.view") ? registeredPatientsState === "error" ? "directory unavailable" : "registered patients" : "patient access is off"} onClick={permitted("patients.view") ? () => onNavigate("patients", { anchor: "registered-patients" }) : undefined} />
-      <Kpi icon={<ClipboardCheck size={16} />} label="Assessments to review" value={permitted("assessments.review") ? String(reviewPatients.length) : "—"} trend={permitted("assessments.review") ? "Current queue" : "No access"} foot={permitted("assessments.review") ? "Preview records" : "assessment access is off"} onClick={permitted("assessments.review") ? openReviewQueue : undefined} />
-      <Kpi icon={<CalendarCheck2 size={16} />} label="Clinic visits today" value={permitted("bookings.manage") ? String(appointmentsToday.length) : "—"} trend={permitted("bookings.manage") ? "Dr. Jai Bansal" : "No access"} foot={permitted("bookings.manage") ? "Preview schedule" : "appointment access is off"} onClick={permitted("bookings.manage") ? () => onNavigate("bookings", { bookingDate: todayKey }) : undefined} />
-      <Kpi icon={isSuper ? <HeartPulse size={16} /> : <PackageCheck size={16} />} label={isSuper ? "Reports ready to share" : "Orders to fulfil"} value={permitted(isSuper ? "reports.share" : "orders.manage") ? String(isSuper ? reportsReady.length : ordersToFulfil) : "—"} trend={permitted(isSuper ? "reports.share" : "orders.manage") ? "Current queue" : "No access"} foot={permitted(isSuper ? "reports.share" : "orders.manage") ? "Preview records" : "restricted for this account"} onClick={!isSuper && permitted("orders.manage") ? () => onNavigate("orders") : undefined} />
+      <Kpi icon={<UsersRound size={16} />} label="Patient records" value={!permitted("patients.view") ? "—" : serverSummary?.patients?.total !== undefined ? String(serverSummary.patients.total) : registeredPatientsState === "ready" ? String(registeredPatientTotal) : registeredPatientsState === "loading" ? "…" : "—"} trend={permitted("patients.view") ? (serverSummary ? "Server count" : "Live directory") : "No access"} foot={permitted("patients.view") ? registeredPatientsState === "error" ? "directory unavailable" : "registered patients" : "patient access is off"} onClick={permitted("patients.view") ? () => onNavigate("patients", { anchor: "registered-patients" }) : undefined} />
+      <Kpi icon={<ClipboardCheck size={16} />} label="Assessments to review" value={permitted("assessments.review") ? String(serverSummary?.assessments?.pending ?? reviewPatients.length) : "—"} trend={permitted("assessments.review") ? (serverSummary ? "Server queue" : "Current queue") : "No access"} foot={permitted("assessments.review") ? (serverSummary ? "Live assessments" : "Preview records") : "assessment access is off"} onClick={permitted("assessments.review") ? openReviewQueue : undefined} />
+      <Kpi icon={<CalendarCheck2 size={16} />} label="Clinic visits today" value={permitted("bookings.manage") ? String(serverSummary?.appointments?.today ?? appointmentsToday.length) : "—"} trend={permitted("bookings.manage") ? "Dr. Jai Bansal" : "No access"} foot={permitted("bookings.manage") ? (serverSummary ? "Confirmed & pending" : "Preview schedule") : "appointment access is off"} onClick={permitted("bookings.manage") ? () => onNavigate("bookings", { bookingDate: todayKey }) : undefined} />
+      <Kpi icon={isSuper ? <HeartPulse size={16} /> : <PackageCheck size={16} />} label={isSuper ? "Reports shared with patients" : "Orders to fulfil"} value={permitted(isSuper ? "reports.share" : "orders.manage") ? String(isSuper ? (serverSummary?.reports?.shared ?? reportsReady.length) : ordersToFulfil) : "—"} trend={permitted(isSuper ? "reports.share" : "orders.manage") ? (serverSummary ? "Clinical vault" : "Current queue") : "No access"} foot={permitted(isSuper ? "reports.share" : "orders.manage") ? (serverSummary ? "Shared clinical reports" : "Preview records") : "restricted for this account"} onClick={!isSuper && permitted("orders.manage") ? () => onNavigate("orders") : undefined} />
     </section>
 
     <section className="mb-4 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-12" aria-label="Appointments by date">

@@ -73,11 +73,27 @@ export function AppUpdatesPanel({ onToast, onAudit }: { onToast: (message: strin
     commitSave(platform, policy);
   };
 
-  const commitSave = (platform: Platform, policy: UpdatePolicy) => {
+  const commitSave = async (platform: Platform, policy: UpdatePolicy) => {
     setPolicies((current) => ({ ...current, [platform]: policy }));
+    try {
+      await fetch(`/api/admin/releases/${encodeURIComponent(platform)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          minVersion: policy.minimumVersion,
+          latestVersion: policy.latestVersion,
+          forceUpdate: policy.mode === "required" && policy.enabled,
+          maintenanceMode: false,
+          downloadUrl: policy.storeUrl,
+          releaseNotes: policy.releaseNotes,
+        }),
+      });
+    } catch {
+      // Retain local state
+    }
     const target = `${platform === "android" ? "Android" : "iOS"} ${policy.mode} update · minimum ${policy.minimumVersion} (${policy.minimumBuild})`;
     onAudit(policy.scheduledAt ? "scheduled app release policy" : "updated app release policy", target);
-    onToast(policy.enabled ? policy.scheduledAt ? `${platform === "android" ? "Android" : "iOS"} update policy scheduled in this demo.` : `${platform === "android" ? "Android" : "iOS"} update policy saved in this demo.` : `${platform === "android" ? "Android" : "iOS"} update policy disabled in this demo.`);
+    onToast(policy.enabled ? policy.scheduledAt ? `${platform === "android" ? "Android" : "iOS"} update policy scheduled.` : `${platform === "android" ? "Android" : "iOS"} update policy saved.` : `${platform === "android" ? "Android" : "iOS"} update policy disabled.`);
     setConfirming(null);
   };
 

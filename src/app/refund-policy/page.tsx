@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalShell } from "@/features/legal/components/legal-shell";
-import { AlertCircle, Clock, CreditCard, RefreshCw, RotateCcw, ShieldCheck } from "lucide-react";
+import { Clock, CreditCard, RotateCcw } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Refund and Cancellation Policy | Dr. Hair App & Clinic",

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalShell } from "@/features/legal/components/legal-shell";
-import { AlertCircle, FileText, HeartPulse, Scale, ShieldAlert } from "lucide-react";
+import { HeartPulse } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Terms and Conditions (EULA) | Dr. Hair App & Clinic",

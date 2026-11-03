@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Admin sign-in uses the backend email OTP flow. Set `DRHAIR_BACKEND_URL` in the shell or local environment to the Express API origin (defaults to `http://localhost:5001`). The backend must include the admin email in its private `ADMIN_EMAILS` setting; development OTP behavior is controlled by the backend's `DEFAULT_TEST_OTP`.
+Open `http://localhost:3000`. Admin sign-in uses the backend email/password flow. Set `DRHAIR_BACKEND_URL` in the shell or local environment to the Express API origin (defaults to `http://localhost:5001`). Patient OTP sign-in is phone-SMS-only and requires `FAST2SMS_API_KEY` in every backend environment.
 
 ## Structure
 

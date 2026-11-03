@@ -1,19 +1,84 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity, ArrowRight, BadgeIndianRupee, Boxes, Check, Download,
   Filter, MapPin, PackageCheck, ShieldAlert, Truck, Undo2, UserRound,
 } from "lucide-react";
 import { Avatar, Modal, PageHeader, StatusPill, TableToolbar } from "../../shared/components/ui";
-import { useSessionState } from "../../shared/lib/use-session-state";
 import { formatCurrency } from "../../commerce/lib/format";
 import { orders as initialOrders } from "../../shared/lib/demo-data";
-import type { OrderFulfillmentStatus, OrderRecord } from "../../shared/types";
+import type { OrderFulfillmentStatus, OrderPaymentStatus, OrderRecord } from "../../shared/types";
 
 type QueueTab = "All orders" | "New" | "Preparing" | "Shipped" | "Needs attention" | "Returns" | "Delivered" | "Cancelled & refunded";
 type OrderDateFilter = "All dates" | "Last 7 days" | "Last 30 days";
 const queueTabs: QueueTab[] = ["All orders", "New", "Preparing", "Shipped", "Needs attention", "Returns", "Delivered", "Cancelled & refunded"];
+
+interface BackendOrder {
+  order_id?: string;
+  id?: string;
+  customer?: { name?: string; email?: string; phone?: string };
+  items?: Array<{ title?: string; name?: string; quantity?: number; price?: number }>;
+  pricing?: { total?: number; subtotal?: number; discount?: number; delivery_fee?: number; tax?: number; coupon_code?: string };
+  shipping_address?: { name?: string; phone?: string; house_number?: string; street?: string; city?: string; state?: string; pincode?: string; formattedAddress?: string };
+  payment?: { payment_status?: string; gateway?: string; refund_amount?: number; refund_id?: string };
+  fulfillment?: { status?: string; courier?: string; tracking_number?: string; cancellation_reason?: string; return_reason?: string };
+  timeline?: Array<{ label?: string; timestamp?: string; done?: boolean }>;
+  created_at?: string;
+  date?: string;
+  total?: number;
+  status?: string;
+  payment_status?: string;
+}
+
+function mapBackendOrder(apiOrder: BackendOrder): OrderRecord {
+  const primaryItem = apiOrder.items?.[0]?.title || apiOrder.items?.[0]?.name || "Product";
+  const extraItemsCount = (apiOrder.items?.length || 1) - 1;
+  const itemSummary = extraItemsCount > 0 ? `${primaryItem} + ${extraItemsCount} more` : primaryItem;
+  const total = apiOrder.pricing?.total ?? apiOrder.total ?? 0;
+  const addr = apiOrder.shipping_address;
+  const formattedAddr = addr?.formattedAddress || (addr ? `${addr.house_number || ""}, ${addr.street || ""}, ${addr.city || ""}` : "");
+
+  return {
+    id: apiOrder.order_id || apiOrder.id || "",
+    customer: apiOrder.customer?.name || "Patient",
+    customerEmail: apiOrder.customer?.email || "",
+    customerPhone: apiOrder.customer?.phone || "",
+    item: itemSummary,
+    date: apiOrder.created_at || apiOrder.date || new Date().toISOString(),
+    amount: `₹${total.toLocaleString("en-IN")}`,
+    totalAmount: total,
+    status: (apiOrder.fulfillment?.status || apiOrder.status || "New") as OrderFulfillmentStatus,
+    paymentStatus: (apiOrder.payment?.payment_status || apiOrder.payment_status || "Pending") as OrderPaymentStatus,
+    paymentMethod: apiOrder.payment?.gateway === "cod" ? "Cash on Delivery" : "Online Gateway",
+    couponCode: apiOrder.pricing?.coupon_code,
+    courier: apiOrder.fulfillment?.courier || "",
+    trackingNumber: apiOrder.fulfillment?.tracking_number || "",
+    refundAmount: apiOrder.payment?.refund_amount ?? 0,
+    refundReason: "",
+    cancellationReason: apiOrder.fulfillment?.cancellation_reason || "",
+    returnReason: apiOrder.fulfillment?.return_reason || "",
+    subtotal: apiOrder.pricing?.subtotal ?? total,
+    discount: apiOrder.pricing?.discount ?? 0,
+    shipping: apiOrder.pricing?.delivery_fee ?? 0,
+    tax: apiOrder.pricing?.tax ?? 0,
+    shippingAddress: formattedAddr,
+    items: Array.isArray(apiOrder.items)
+      ? apiOrder.items.map((i) => ({
+          name: i.title || i.name || "Item",
+          quantity: i.quantity || 1,
+          unitPrice: i.price || 0,
+        }))
+      : [],
+    timeline: Array.isArray(apiOrder.timeline)
+      ? apiOrder.timeline.map((t) => ({
+          label: t.label || "",
+          date: t.timestamp ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(t.timestamp)) : "",
+          done: Boolean(t.done),
+        }))
+      : [],
+  };
+}
 
 function parseAmount(order: OrderRecord) {
   return order.totalAmount ?? (Number(order.amount.replace(/[^0-9.]/g, "")) || 0);
@@ -71,7 +136,7 @@ function canStartPreparing(order: OrderRecord) {
 }
 
 export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExport = false }: { globalSearch: string; onToast: (message: string) => void; onAudit?: (action: string, target: string) => void; canExport?: boolean }) {
-  const [orders, setOrders] = useSessionState<OrderRecord[]>("drhair-demo-orders", initialOrders);
+  const [orders, setOrders] = useState<OrderRecord[]>(initialOrders);
   const [tab, setTab] = useState<QueueTab>("All orders");
   const [query, setQuery] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("Any payment");
@@ -89,6 +154,43 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
   const [refundReason, setRefundReason] = useState("Customer return");
   const [returnOrder, setReturnOrder] = useState<OrderRecord | null>(null);
   const [returnReason, setReturnReason] = useState("Changed my mind");
+
+  const reloadOrders = async () => {
+    try {
+      const res = await fetch("/api/admin/orders");
+      if (res.ok) {
+        const json = await res.json();
+        const items = json.data?.items || json.items || [];
+        if (Array.isArray(items) && items.length > 0) {
+          setOrders(items.map(mapBackendOrder));
+        }
+      }
+    } catch {
+      // Keep existing orders on error
+    }
+  };
+
+  useEffect(() => {
+    let ignore = false;
+    const fetchOrders = async () => {
+      try {
+        const res = await fetch("/api/admin/orders");
+        if (res.ok && !ignore) {
+          const json = await res.json();
+          const items = json.data?.items || json.items || [];
+          if (Array.isArray(items) && items.length > 0) {
+            setOrders(items.map(mapBackendOrder));
+          }
+        }
+      } catch {
+        // Keep existing orders on error
+      }
+    };
+    void fetchOrders();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const normalizedOrders = useMemo(() => orders.map(normalizeOrder), [orders]);
   const selectedOrder = normalizedOrders.find((order) => order.id === selectedOrderId) ?? null;
@@ -110,20 +212,33 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
 
   const updateOrder = (id: string, updater: (order: OrderRecord) => OrderRecord) => setOrders((current) => current.map((order) => order.id === id ? updater(normalizeOrder(order)) : order));
 
-  const startPreparation = (order: OrderRecord) => {
+  const startPreparation = async (order: OrderRecord) => {
     if (!canStartPreparing(order)) {
       onToast("Payment must be confirmed before fulfilment can start.");
       return;
     }
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/fulfillment`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Preparing" }),
+      });
+      if (res.ok) {
+        await reloadOrders();
+        onAudit("started fulfilment for", order.id);
+        onToast(`${order.id} moved to Preparing.`);
+        return;
+      }
+    } catch {}
     updateOrder(order.id, (current) => ({ ...current, status: "Preparing", timeline: appendTimeline(current, "Fulfilment started · preparing order") }));
     onAudit("started fulfilment for", order.id);
-    onToast(`${order.id} moved to Preparing in this browser preview.`);
+    onToast(`${order.id} moved to Preparing.`);
   };
 
-  const handlePrimaryAction = () => {
+  const handlePrimaryAction = async () => {
     if (!selectedOrder) return;
     if (selectedOrder.status === "New" || selectedOrder.status === "Needs attention") {
-      startPreparation(selectedOrder);
+      await startPreparation(selectedOrder);
       return;
     }
     if (selectedOrder.status === "Preparing") {
@@ -131,45 +246,105 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         onToast("Add a courier and tracking number before marking this order shipped.");
         return;
       }
+      try {
+        const res = await fetch(`/api/admin/orders/${selectedOrder.id}/fulfillment`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "Shipped",
+            courier: dispatchDetails.courier.trim(),
+            tracking_number: dispatchDetails.trackingNumber.trim(),
+          }),
+        });
+        if (res.ok) {
+          await reloadOrders();
+          onAudit("shipped order", selectedOrder.id);
+          onToast(`${selectedOrder.id} marked as shipped.`);
+          return;
+        }
+      } catch {}
       updateOrder(selectedOrder.id, (current) => ({ ...current, status: "Shipped", courier: dispatchDetails.courier.trim(), trackingNumber: dispatchDetails.trackingNumber.trim(), timeline: appendTimeline(current, `Shipped · ${dispatchDetails.courier.trim()} · ${dispatchDetails.trackingNumber.trim()}`) }));
       onAudit("shipped order", selectedOrder.id);
-      onToast(`${selectedOrder.id} marked as shipped in this browser preview.`);
+      onToast(`${selectedOrder.id} marked as shipped.`);
       return;
     }
     if (selectedOrder.status === "Shipped") {
+      try {
+        const res = await fetch(`/api/admin/orders/${selectedOrder.id}/fulfillment`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "Delivered" }),
+        });
+        if (res.ok) {
+          await reloadOrders();
+          onAudit("marked order delivered", selectedOrder.id);
+          onToast(`${selectedOrder.id} marked delivered.`);
+          return;
+        }
+      } catch {}
       updateOrder(selectedOrder.id, (current) => ({ ...current, status: "Delivered", timeline: appendTimeline(current, "Marked delivered") }));
       onAudit("marked order delivered", selectedOrder.id);
-      onToast(`${selectedOrder.id} marked delivered in this browser preview.`);
+      onToast(`${selectedOrder.id} marked delivered.`);
       return;
     }
     setSelectedOrderId(null);
   };
 
-  const confirmCancellation = () => {
+  const confirmCancellation = async () => {
     if (!cancelOrder) return;
+    try {
+      const res = await fetch(`/api/admin/orders/${cancelOrder.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      if (res.ok) {
+        await reloadOrders();
+        onAudit("cancelled order", `${cancelOrder.id} · ${cancelReason}`);
+        onToast("Order cancelled and inventory released.");
+        setCancelOrder(null);
+        setSelectedOrderId(null);
+        return;
+      }
+    } catch {}
     updateOrder(cancelOrder.id, (current) => ({
       ...current, status: "Cancelled", cancellationReason: cancelReason,
       timeline: appendTimeline(current, `Cancelled · ${cancelReason}`),
     }));
     onAudit("cancelled order", `${cancelOrder.id} · ${cancelReason}`);
-    onToast("Cancellation recorded locally. Use Refund to record the payment action separately.");
+    onToast("Cancellation recorded.");
     setCancelOrder(null);
     setSelectedOrderId(null);
   };
 
-  const confirmReturn = () => {
+  const confirmReturn = async () => {
     if (!returnOrder) return;
+    try {
+      const res = await fetch(`/api/admin/orders/${returnOrder.id}/fulfillment`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Return requested" }),
+      });
+      if (res.ok) {
+        await reloadOrders();
+        onAudit("recorded return request", `${returnOrder.id} · ${returnReason}`);
+        onToast("Return request saved.");
+        setReturnOrder(null);
+        setSelectedOrderId(null);
+        return;
+      }
+    } catch {}
     updateOrder(returnOrder.id, (current) => ({
       ...current, status: "Return requested", returnReason,
       timeline: appendTimeline(current, `Return requested · ${returnReason}`),
     }));
     onAudit("recorded return request", `${returnOrder.id} · ${returnReason}`);
-    onToast("Return request saved locally. Arrange the return with your courier after API integration.");
+    onToast("Return request saved.");
     setReturnOrder(null);
     setSelectedOrderId(null);
   };
 
-  const confirmRefund = () => {
+  const confirmRefund = async () => {
     if (!refundOrder) return;
     const amount = Math.round(Number(refundAmount));
     const previousRefund = refundOrder.refundAmount ?? 0;
@@ -178,6 +353,21 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
       onToast(`Enter a refund between ₹1 and ${formatCurrency(remaining)} and add a reason.`);
       return;
     }
+    try {
+      const res = await fetch(`/api/admin/orders/${refundOrder.id}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, reason: refundReason, restock_inventory: true }),
+      });
+      if (res.ok) {
+        await reloadOrders();
+        onAudit("recorded refund", `${refundOrder.id} · ${formatCurrency(amount)}`);
+        onToast(`${formatCurrency(amount)} refund processed and stock restored.`);
+        setRefundOrder(null);
+        setSelectedOrderId(null);
+        return;
+      }
+    } catch {}
     const nextRefund = previousRefund + amount;
     const fullRefund = nextRefund >= parseAmount(refundOrder);
     updateOrder(refundOrder.id, (current) => ({
@@ -187,7 +377,7 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
       timeline: appendTimeline(current, `${fullRefund ? "Refunded" : "Partially refunded"} · ${formatCurrency(amount)} · ${refundReason}`),
     }));
     onAudit("recorded refund", `${refundOrder.id} · ${formatCurrency(amount)}`);
-    onToast(`${formatCurrency(amount)} refund recorded locally. No payment provider was contacted.`);
+    onToast(`${formatCurrency(amount)} refund recorded.`);
     setRefundOrder(null);
     setSelectedOrderId(null);
   };

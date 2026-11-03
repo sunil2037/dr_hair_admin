@@ -5,14 +5,10 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ExternalLink,
-  FileCheck2,
   FileText,
   HelpCircle,
-  Lock,
   RotateCcw,
-  Scale,
   Shield,
-  Smartphone,
   Trash2,
 } from "lucide-react";
 

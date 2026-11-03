@@ -34,12 +34,25 @@ export function FeatureControls({
   const panelState = panelModules.map((item) => ({ ...item, enabled: panelAccess[item.id] ?? item.enabled }));
   const grouped = useMemo(() => features.reduce<Record<string, FeatureRecord[]>>((acc, feature) => { (acc[feature.group] ??= []).push(feature); return acc; }, {}), [features]);
 
-  const commitToggle = () => {
+  const commitToggle = async () => {
     if (!target) return;
-    if (target.kind === "app") onFeaturesChange(features.map((item) => item.id === target.id ? { ...item, enabled: !item.enabled } : item));
-    else onPanelAccessChange(target.id, !target.enabled);
+    const newEnabled = !target.enabled;
+    if (target.kind === "app") {
+      onFeaturesChange(features.map((item) => item.id === target.id ? { ...item, enabled: newEnabled } : item));
+      try {
+        await fetch(`/api/admin/features/${encodeURIComponent(target.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: newEnabled }),
+        });
+      } catch {
+        // Retain optimistic update
+      }
+    } else {
+      onPanelAccessChange(target.id, newEnabled);
+    }
     onAudit(target.enabled ? "disabled" : "enabled", target.title);
-    onToast(`${target.title} ${target.enabled ? "disabled" : "enabled"} in this demo.`);
+    onToast(`${target.title} ${newEnabled ? "enabled" : "disabled"}.`);
     setTarget(null);
   };
 

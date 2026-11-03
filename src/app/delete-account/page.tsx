@@ -3,14 +3,8 @@
 import { useState } from "react";
 import { LegalShell } from "@/features/legal/components/legal-shell";
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle,
-  FileText,
-  Mail,
-  Phone,
-  ShieldCheck,
-  Smartphone,
   Trash2,
 } from "lucide-react";
 

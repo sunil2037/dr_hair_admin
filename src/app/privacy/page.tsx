@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalShell } from "@/features/legal/components/legal-shell";
-import { AlertTriangle, CheckCircle, Database, Eye, Lock, ShieldCheck, UserCheck } from "lucide-react";
+import { Eye, ShieldCheck } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Dr. Hair App & Clinic",

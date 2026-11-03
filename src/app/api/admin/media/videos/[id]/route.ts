@@ -59,3 +59,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
     return noStoreJson({ message: "Video could not be updated." }, 503);
   }
 }
+
+export async function PATCH(request: Request, context: RouteContext) {
+  return PUT(request, context);
+}

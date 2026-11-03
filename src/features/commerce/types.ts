@@ -39,6 +39,7 @@ export interface ProductClinicalClaim {
 
 export interface ProductMedia {
   name: string;
+  url?: string;
   kind: "image" | "video";
   altText?: string;
   isPrimary?: boolean;
@@ -58,6 +59,7 @@ export interface ProductRecord {
   unitsSold: number;
   revenue: number;
   status: ProductStatus;
+  images?: string[];
   media: ProductMedia[];
   rootCauses?: string[];
   supplyPlans?: ProductSupplyPlan[];

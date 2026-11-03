@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   Eye,
   FolderPlus,
@@ -52,6 +53,15 @@ const appBannerRoutes = [
   { path: "/clinic-appointment", label: "Clinic appointment" },
 ];
 
+function extractYouTubeId(url: string): string | null {
+  if (!url || typeof url !== "string") return null;
+  const trimmed = url.trim();
+  const match = trimmed.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+  if (match) return match[1];
+  if (/^[\w-]{11}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
 function mapSavedVideo(item: Record<string, unknown>): VideoContentItem {
   const seconds = typeof item.duration === "number" ? Math.round(item.duration) : 0;
   const durationStr =
@@ -62,6 +72,8 @@ function mapSavedVideo(item: Record<string, unknown>): VideoContentItem {
       : item.provider === "youtube"
       ? "YouTube"
       : "1:00";
+  const ytId = typeof item.youtube_video_id === "string" ? item.youtube_video_id : extractYouTubeId(String(item.secure_url || ""));
+  const thumbFallback = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : "";
   return {
     id: String(item.public_id || item.youtube_video_id || ""),
     publicId: typeof item.public_id === "string" ? item.public_id : undefined,
@@ -72,8 +84,8 @@ function mapSavedVideo(item: Record<string, unknown>): VideoContentItem {
     views: typeof item.views === "number" ? item.views : 0,
     likes: typeof item.likes === "number" ? item.likes : 0,
     creatorName: String(item.author_name || "Dr. Hair Clinic"),
-    thumbnail: String(item.thumbnail_url || ""),
-    videoUrl: String(item.secure_url || ""),
+    thumbnail: String(item.thumbnail_url || thumbFallback),
+    videoUrl: String(item.secure_url || (ytId ? `https://www.youtube.com/watch?v=${ytId}` : "")),
     caption: String(item.description || ""),
     treatmentTag: String(item.treatment || "Hair Care"),
     placement: item.placement === "home" || item.placement === "both" ? item.placement : "reels",
@@ -112,9 +124,9 @@ export function ContentManagement({
     "drhair-demo-content-videos",
     initialVideos
   );
-  const [videoSource, setVideoSource] = useState<"upload" | "youtube">("upload");
-  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [savingVideo, setSavingVideo] = useState(false);
+  const [isPurgingLegacy, setIsPurgingLegacy] = useState(false);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
   const [videoLoadError, setVideoLoadError] = useState("");
   const [reviews, setReviews] = useSessionState<ReviewContentItem[]>(
     "drhair-demo-content-reviews",
@@ -131,7 +143,7 @@ export function ContentManagement({
   ], [catalogProducts]);
 
   useEffect(() => {
-    if (scope !== "content" || !canUploadMedia) return;
+    if (scope !== "content" || (!canUploadMedia && !canEdit)) return;
     const controller = new AbortController();
     fetch("/api/admin/media/videos", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
@@ -146,7 +158,25 @@ export function ContentManagement({
         if (!controller.signal.aborted) setVideoLoadError(error instanceof Error ? error.message : "Saved videos could not be loaded.");
       });
     return () => controller.abort();
-  }, [canUploadMedia, scope, setVideos]);
+  }, [canEdit, canUploadMedia, scope, setVideos]);
+
+  const [isRefreshingVideos, setIsRefreshingVideos] = useState(false);
+  const refreshVideos = async () => {
+    setIsRefreshingVideos(true);
+    try {
+      const response = await fetch("/api/admin/media/videos", { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || "Failed to refresh videos.");
+      const items = Array.isArray(result?.data?.items) ? result.data.items : [];
+      setVideos(items.map(mapSavedVideo));
+      setVideoLoadError("");
+      onToast("Videos refreshed from database.");
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : "Failed to refresh videos.");
+    } finally {
+      setIsRefreshingVideos(false);
+    }
+  };
 
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [statusFilter, setStatusFilter] = useState<string>("All status");
@@ -241,22 +271,32 @@ export function ContentManagement({
     }
   };
 
-  const handleVideoFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!canUploadMedia) return;
-    const file = event.target.files?.[0] ?? null;
-    if (!file) return;
-    const allowed = ["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"];
-    if (!allowed.includes(file.type)) {
-      onToast("Choose an MP4, MOV, M4V, or WebM video.");
-      event.target.value = "";
+  // Purge legacy demo videos from MongoDB / store
+  const handlePurgeLegacyVideos = async () => {
+    if (!window.confirm("Are you sure you want to purge all legacy Cloudinary and demo sample videos from the database? This cannot be undone.")) {
       return;
     }
-    if (file.size > 100 * 1024 * 1024) {
-      onToast("The video must be under 100 MB.");
-      event.target.value = "";
-      return;
+    setIsPurgingLegacy(true);
+    try {
+      const response = await fetch("/api/admin/media/videos/purge-legacy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || "Failed to purge legacy videos.");
+      onAudit("purged legacy demo videos", `${result?.data?.deletedCount || 0} removed`);
+      onToast(result.message || "Legacy demo videos purged successfully.");
+      const refreshRes = await fetch("/api/admin/media/videos", { cache: "no-store" });
+      const refreshData = await refreshRes.json().catch(() => ({}));
+      if (refreshRes.ok && Array.isArray(refreshData?.data?.items)) {
+        setVideos(refreshData.data.items.map(mapSavedVideo));
+      }
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Failed to purge legacy videos.");
+    } finally {
+      setIsPurgingLegacy(false);
     }
-    setVideoFile(file);
   };
 
   // Add New Category
@@ -289,8 +329,6 @@ export function ContentManagement({
     setFormMediaUrl("");
     setFormVideoUrl("");
     setFormVideoPlacement("reels");
-    setVideoFile(null);
-    setVideoSource("upload");
     setFormSecondaryText("");
     setFormDetailTag("");
     setFormRating(5);
@@ -322,8 +360,7 @@ export function ContentManagement({
       setFormSecondaryText(v.caption);
       setFormDetailTag(v.duration);
       setFormVideoUrl(v.videoUrl || "");
-      setVideoSource(v.provider === "youtube" ? "youtube" : "upload");
-      setVideoFile(null);
+      setFormVideoPlacement(v.placement || "reels");
     } else if (activeTab === "reviews") {
       const r = item as ReviewContentItem;
       setFormTitle(r.patientName);
@@ -363,12 +400,12 @@ export function ContentManagement({
       return;
     }
     if (activeTab === "videos" && !editingItemId) {
-      if (videoSource === "youtube" && !formVideoUrl.trim()) {
+      if (!formVideoUrl.trim()) {
         onToast("Paste a YouTube video link first.");
         return;
       }
-      if (videoSource === "upload" && !videoFile) {
-        onToast("Choose a video file to upload.");
+      if (!extractYouTubeId(formVideoUrl.trim())) {
+        onToast("Please provide a valid YouTube watch link, Shorts link, or ID.");
         return;
       }
     }
@@ -410,87 +447,80 @@ export function ContentManagement({
       if (!editingItemId) {
         setSavingVideo(true);
         try {
-          let response: Response;
-          if (videoSource === "youtube") {
-            response = await fetch("/api/admin/media/videos/youtube", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: formVideoUrl.trim(), title: formTitle.trim(), category: formCategory, description: formSecondaryText.trim(), placement: formVideoPlacement }), cache: "no-store",
-            });
-          } else {
-            const signatureResponse = await fetch("/api/admin/media/videos/signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}), cache: "no-store" });
-            const signatureResult = await signatureResponse.json().catch(() => ({}));
-            if (!signatureResponse.ok || !signatureResult?.data?.apiKey || !signatureResult?.data?.signature) throw new Error(signatureResult.message || "Could not prepare secure Cloudinary upload.");
-            const signature = signatureResult.data;
-            const uploadBody = new FormData();
-            uploadBody.set("file", videoFile as File);
-            uploadBody.set("api_key", String(signature.apiKey));
-            uploadBody.set("timestamp", String(signature.timestamp));
-            uploadBody.set("signature", String(signature.signature));
-            uploadBody.set("folder", String(signature.folder));
-            if (signature.publicId) uploadBody.set("public_id", String(signature.publicId));
-            const uploadResponse = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(String(signature.cloudName))}/video/upload`, { method: "POST", body: uploadBody });
-            const asset = await uploadResponse.json().catch(() => ({}));
-            if (!uploadResponse.ok || typeof asset.public_id !== "string") throw new Error(asset.error?.message || "Cloudinary video upload failed.");
-            response = await fetch("/api/admin/media/videos", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ public_id: asset.public_id, title: formTitle.trim(), category: formCategory, description: formSecondaryText.trim(), placement: formVideoPlacement }), cache: "no-store",
-            });
-          }
-          let result = await response.json().catch(() => ({}));
-          if (!response.ok || !result?.data) throw new Error(result.message || "Video could not be saved.");
+          const response = await fetch("/api/admin/media/videos/youtube", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: formVideoUrl.trim(),
+              title: formTitle.trim(),
+              category: formCategory,
+              description: formSecondaryText.trim(),
+              placement: formVideoPlacement,
+              status: savedStatus.toLowerCase(),
+            }),
+            cache: "no-store",
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result?.data) throw new Error(result.message || "YouTube video could not be saved.");
           let savedVideo = result.data as Record<string, unknown>;
-          if (savedStatus === "Published") {
-            const statusResponse = await fetch("/api/admin/media/videos/status", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ public_id: savedVideo.public_id, status: "published" }), cache: "no-store" });
-            result = await statusResponse.json().catch(() => ({}));
-            if (!statusResponse.ok || !result?.data) throw new Error(result.message || "Video was saved as a draft but could not be published.");
-            savedVideo = result.data as Record<string, unknown>;
+          if (savedStatus === "Published" && savedVideo.status !== "published") {
+            const statusResponse = await fetch("/api/admin/media/videos/status", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ public_id: savedVideo.public_id, status: "published" }),
+              cache: "no-store",
+            });
+            const statusResult = await statusResponse.json().catch(() => ({}));
+            if (statusResponse.ok && statusResult?.data) {
+              savedVideo = statusResult.data as Record<string, unknown>;
+            }
           }
           const mappedVideo = mapSavedVideo(savedVideo);
           setVideos((current) => [mappedVideo, ...current.filter((item) => item.id !== mappedVideo.id)]);
           setIsCreateModalOpen(false);
-          setVideoFile(null);
-          onAudit(savedStatus === "Published" ? "published app video" : "saved app video draft", mappedVideo.title);
-          onToast(savedStatus === "Published" ? "Video published to the app." : "Video saved as a draft.");
+          onAudit(savedStatus === "Published" ? "published YouTube video" : "saved YouTube video draft", mappedVideo.title);
+          onToast(savedStatus === "Published" ? "YouTube video published to the app." : "YouTube video saved as a draft.");
         } catch (error) {
-          onToast(error instanceof Error ? error.message : "Video could not be uploaded.");
-        } finally { setSavingVideo(false); }
+          onToast(error instanceof Error ? error.message : "YouTube video could not be saved.");
+        } finally {
+          setSavingVideo(false);
+        }
         return;
       }
       if (editingItemId) {
-        setVideos((prev) =>
-          prev.map((v) =>
-            v.id === editingItemId
-              ? {
-                ...v,
-                title: formTitle.trim(),
-                category: formCategory,
-                thumbnail: defaultImage,
-                caption: formSecondaryText.trim(),
-                duration: formDetailTag.trim() || "1:45",
-                status: savedStatus,
-                updated: "Just now",
-              }
-              : v
-          )
-        );
-        onToast("Video reel updated successfully.");
-      } else {
-        const newVideo: VideoContentItem = {
-          id: `VID-${Date.now().toString().slice(-4)}`,
-          title: formTitle.trim(),
-          category: formCategory,
-          duration: formDetailTag.trim() || "1:45",
-          views: 120,
-          likes: 18,
-          creatorName: "Dr. Hair Clinic",
-          thumbnail: defaultImage,
-          caption: formSecondaryText.trim() || "Educational video for hair care.",
-          treatmentTag: "Hair Care",
-          status: savedStatus,
-          updated: "Just now",
-        };
-        setVideos([newVideo, ...videos]);
-        onToast("Video reel added successfully.");
+        setSavingVideo(true);
+        try {
+          const currentVideo = videos.find((v) => v.id === editingItemId);
+          const publicId = currentVideo?.publicId || editingItemId;
+          const updatePayload: Record<string, unknown> = {
+            title: formTitle.trim(),
+            category: formCategory,
+            description: formSecondaryText.trim(),
+            placement: formVideoPlacement,
+            status: savedStatus.toLowerCase(),
+          };
+          if (formVideoUrl.trim()) {
+            updatePayload.url = formVideoUrl.trim();
+          }
+          const response = await fetch(`/api/admin/media/videos/${encodeURIComponent(publicId)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(updatePayload),
+            cache: "no-store",
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result?.data) throw new Error(result.message || "Failed to update video in database.");
+          const updated = mapSavedVideo(result.data as Record<string, unknown>);
+          setVideos((current) => current.map((v) => (v.id === editingItemId ? updated : v)));
+          setIsCreateModalOpen(false);
+          onAudit("updated YouTube video in database", updated.title);
+          onToast("Video updated successfully in database.");
+        } catch (error) {
+          onToast(error instanceof Error ? error.message : "Video could not be updated.");
+        } finally {
+          setSavingVideo(false);
+        }
+        return;
       }
     } else if (activeTab === "reviews") {
       if (editingItemId) {
@@ -612,20 +642,32 @@ export function ContentManagement({
     if (title) setDeleteTarget({ id, kind, title });
   };
 
-  const confirmDeleteItem = () => {
+  const confirmDeleteItem = async () => {
     if (!deleteTarget || !canEdit) return;
     const { id, kind, title } = deleteTarget;
     if (kind === "videos") {
+      setIsDeletingItem(true);
       const targetVideo = videos.find((item) => item.id === id);
       const publicId = targetVideo?.publicId || id;
-      if (publicId) {
-        fetch(`/api/admin/media/videos/${encodeURIComponent(publicId)}`, {
+      try {
+        const response = await fetch(`/api/admin/media/videos/${encodeURIComponent(publicId)}`, {
           method: "DELETE",
-        }).catch(() => {});
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || "Could not delete video from database.");
+        setVideos((prev) => prev.filter((item) => item.id !== id && item.publicId !== publicId));
+        onAudit("deleted video from database", title);
+        onToast("Video permanently deleted from database.");
+        setDeleteTarget(null);
+      } catch (error) {
+        onToast(error instanceof Error ? error.message : "Failed to delete video from database.");
+      } finally {
+        setIsDeletingItem(false);
       }
-      setVideos((prev) => prev.filter((item) => item.id !== id));
-      onToast("Video removed from library.");
-    } else if (kind === "reviews") {
+      return;
+    }
+    if (kind === "reviews") {
       setReviews((prev) => prev.filter((item) => item.id !== id));
       onToast("Review removed from library.");
     } else {
@@ -644,6 +686,28 @@ export function ContentManagement({
         description="Manage the videos, approved stories, and images that are intended for the Dr. Hair app."
         action={canEdit || canUploadMedia ? (
           <div className="flex items-center gap-2">
+            {activeTab === "videos" && (
+              <button
+                type="button"
+                className="button button-secondary text-xs flex items-center gap-1.5"
+                onClick={refreshVideos}
+                disabled={isRefreshingVideos}
+                title="Refresh video list from database"
+              >
+                <span>{isRefreshingVideos ? "Syncing…" : "↻ Refresh"}</span>
+              </button>
+            )}
+            {activeTab === "videos" && canEdit && (
+              <button
+                type="button"
+                className="button button-secondary text-xs flex items-center gap-1.5 text-rose-700 hover:text-rose-800 hover:border-rose-300"
+                onClick={handlePurgeLegacyVideos}
+                disabled={isPurgingLegacy}
+              >
+                <Trash2 size={14} />
+                <span>{isPurgingLegacy ? "Purging…" : "Purge Legacy Demo Videos"}</span>
+              </button>
+            )}
             <button
               className="button button-secondary text-xs flex items-center gap-1.5"
               onClick={() => canEdit && setIsCategoryModalOpen(true)}
@@ -658,7 +722,7 @@ export function ContentManagement({
               <Plus size={14} />
               <span>
                 {activeTab === "videos"
-                  ? "Upload Video"
+                  ? "+ Add YouTube Video"
                   : activeTab === "reviews"
                     ? "Add Patient Review"
                     : "Create Banner"}
@@ -676,7 +740,7 @@ export function ContentManagement({
 
       {embedded && <div className="mb-4 flex flex-wrap justify-end gap-2">
         {canEdit && <button className="button button-secondary button-small" onClick={() => setIsCategoryModalOpen(true)}><FolderPlus size={13} />Add category</button>}
-        {(canEdit || canUploadMedia) && <button className="button button-primary button-small" onClick={openCreateModal}><Plus size={13} />{activeTab === "videos" ? "Upload video" : activeTab === "reviews" ? "Add patient story" : "Create banner"}</button>}
+        {(canEdit || canUploadMedia) && <button className="button button-primary button-small" onClick={openCreateModal}><Plus size={13} />{activeTab === "videos" ? "+ Add YouTube Video" : activeTab === "reviews" ? "Add patient story" : "Create banner"}</button>}
       </div>}
 
       {/* Top Content Type Switcher */}
@@ -836,8 +900,13 @@ export function ContentManagement({
                   <span className="absolute bottom-2 right-2 bg-black/75 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
                     {video.duration}
                   </span>
-                  <span className="absolute top-2 left-2">
+                  <span className="absolute top-2 left-2 flex items-center gap-1.5">
                     <StatusPill status={video.status} />
+                    {video.provider === "youtube" && (
+                      <span className="inline-flex items-center gap-1 rounded bg-rose-600 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm">
+                        <Play size={8} fill="currentColor" /> YouTube
+                      </span>
+                    )}
                   </span>
                 </button>
 
@@ -869,7 +938,7 @@ export function ContentManagement({
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      {video.apiManaged ? <button
+                      <button
                         type="button"
                         onClick={() => void toggleSavedVideoStatus(video)}
                         disabled={!canPublish}
@@ -877,20 +946,27 @@ export function ContentManagement({
                         title={canPublish ? (video.status === "Published" ? "Move to drafts" : "Publish video") : "Publishing permission required"}
                       >
                         <CheckCircle2 size={13} />
-                      </button> : <><button
-                        onClick={() => openEditModal(video)}
-                        className="p-1.5 text-slate-500 hover:text-teal-700 rounded hover:bg-slate-100"
-                        title="Edit video reel"
-                      >
-                        <Pencil size={13} />
                       </button>
-                      <button
-                        onClick={() => handleDeleteItem(video.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
-                        title="Delete video"
-                      >
-                        <Trash2 size={13} />
-                      </button></>}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(video)}
+                          className="p-1.5 text-slate-500 hover:text-teal-700 rounded hover:bg-slate-100"
+                          title="Edit YouTube video"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteItem(video.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50"
+                          title="Permanently delete video from database"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -926,7 +1002,14 @@ export function ContentManagement({
                           <img src={v.thumbnail} alt={v.title} className="h-full w-full object-cover" />
                         </button>
                         <div>
-                          <strong className="text-xs text-slate-800 block truncate max-w-xs">{v.title}</strong>
+                          <div className="flex items-center gap-1.5">
+                            <strong className="text-xs text-slate-800 block truncate max-w-xs">{v.title}</strong>
+                            {v.provider === "youtube" && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-rose-50 px-1 py-0.5 text-[9px] font-semibold text-rose-700 border border-rose-200">
+                                YouTube
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-400">{v.creatorName}</span>
                         </div>
                       </div>
@@ -940,7 +1023,35 @@ export function ContentManagement({
                     <td>{v.updated}</td>
                     <td>
                       <div className="flex items-center gap-1">
-                        {v.apiManaged ? <button onClick={() => void toggleSavedVideoStatus(v)} className="row-action" disabled={!canPublish} title={canPublish ? (v.status === "Published" ? "Move to drafts" : "Publish video") : "Publishing permission required"}><CheckCircle2 size={14} /></button> : <><button onClick={() => openEditModal(v)} className="row-action" title="Edit"><Pencil size={14} /></button><button onClick={() => handleDeleteItem(v.id)} className="row-action hover:text-rose-600" title="Delete"><Trash2 size={14} /></button></>}
+                        <button
+                          type="button"
+                          onClick={() => void toggleSavedVideoStatus(v)}
+                          className="row-action text-slate-500 hover:text-teal-700"
+                          disabled={!canPublish}
+                          title={canPublish ? (v.status === "Published" ? "Move to drafts" : "Publish video") : "Publishing permission required"}
+                        >
+                          <CheckCircle2 size={14} />
+                        </button>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(v)}
+                            className="row-action text-slate-600 hover:text-teal-700"
+                            title="Edit YouTube video"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteItem(v.id)}
+                            className="row-action text-slate-400 hover:text-rose-600"
+                            title="Permanently delete video from database"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1179,11 +1290,19 @@ export function ContentManagement({
         <Modal
           title={
             editingItemId
-              ? `Edit ${activeTab === "videos" ? "Video" : activeTab === "reviews" ? "Patient Review" : "Banner"}`
-              : `Upload New ${activeTab === "videos" ? "Video" : activeTab === "reviews" ? "Patient Review" : "Banner"}`
+              ? `Edit ${activeTab === "videos" ? "YouTube Video" : activeTab === "reviews" ? "Patient Review" : "Banner"}`
+              : activeTab === "videos"
+              ? "Add YouTube Video"
+              : activeTab === "reviews"
+              ? "Add Patient Story"
+              : "Create Banner"
           }
-          description="Upload media, configure category, and publish directly to the mobile app library."
-          submitLabel={savingVideo ? "Uploading…" : canPublish && formStatus === "Published" ? "Publish to App" : "Save Draft"}
+          description={
+            activeTab === "videos"
+              ? "Provide a YouTube video or Shorts link, configure category, and publish directly to the mobile app library."
+              : "Upload media, configure category, and publish directly to the mobile app library."
+          }
+          submitLabel={savingVideo ? "Saving…" : canPublish && formStatus === "Published" ? "Publish to App" : "Save Draft"}
           submitDisabled={savingVideo}
           onClose={() => setIsCreateModalOpen(false)}
           onSubmit={handleSaveContent}
@@ -1249,16 +1368,86 @@ export function ContentManagement({
               </div>
             </div>
 
-            {activeTab === "videos" && !editingItemId && <div className="space-y-3 rounded-xl border border-teal-100 bg-teal-50/50 p-3.5">
-              <div><p className="text-xs font-semibold text-slate-700">Video source</p><p className="mt-1 text-[10px] text-slate-500">Upload a video to Cloudinary or add one YouTube video link.</p></div>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" className={`rounded-lg border px-3 py-2.5 text-left text-xs font-semibold ${videoSource === "upload" ? "border-teal-500 bg-white text-teal-800 shadow-sm" : "border-slate-200 bg-slate-50 text-slate-600"}`} onClick={() => setVideoSource("upload")}><UploadCloud size={14} className="mb-1" />Upload video</button>
-                <button type="button" className={`rounded-lg border px-3 py-2.5 text-left text-xs font-semibold ${videoSource === "youtube" ? "border-teal-500 bg-white text-teal-800 shadow-sm" : "border-slate-200 bg-slate-50 text-slate-600"}`} onClick={() => setVideoSource("youtube")}><Play size={14} className="mb-1" />YouTube link</button>
+            {activeTab === "videos" && (
+              <div className="space-y-3 rounded-xl border border-rose-100 bg-rose-50/30 p-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-rose-600 text-white shadow-sm">
+                    <Play size={12} fill="currentColor" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">YouTube Video / Shorts Link</p>
+                    <p className="text-[10px] text-slate-500">Paste any standard YouTube video URL, Shorts link, or video ID.</p>
+                  </div>
+                </div>
+
+                <label className="block text-xs font-medium text-slate-700">
+                  YouTube Video or Shorts URL *
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://youtube.com/watch?v=... or https://youtu.be/... or https://youtube.com/shorts/..."
+                    value={formVideoUrl}
+                    onChange={(event) => setFormVideoUrl(event.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs focus:border-rose-500 focus:outline-none"
+                  />
+                  <span className="mt-1 block text-[10px] text-slate-400">
+                    Supports desktop watch URLs, mobile links, Shorts, and embed links.
+                  </span>
+                </label>
+
+                {/* Live YouTube Thumbnail Preview */}
+                {(() => {
+                  const ytId = extractYouTubeId(formVideoUrl);
+                  if (!ytId) return null;
+                  const thumb = `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`;
+                  return (
+                    <div className="flex items-center gap-3 rounded-lg border border-rose-200 bg-white p-2.5">
+                      <div className="relative h-14 w-24 flex-shrink-0 overflow-hidden rounded bg-slate-900 shadow-sm">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={thumb} alt="YouTube thumbnail" className="h-full w-full object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-600 text-white shadow">
+                            <Play size={10} fill="currentColor" />
+                          </span>
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-[11px] font-semibold text-slate-800">YouTube Video Detected</span>
+                        <span className="mt-0.5 block truncate text-[10px] font-mono text-slate-500">ID: {ytId}</span>
+                        <span className="mt-0.5 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 border border-emerald-200">
+                          Ready for patient app
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <label className="block text-xs font-medium text-slate-700">
+                  Show Video In
+                  <select
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs"
+                    value={formVideoPlacement}
+                    onChange={(event) => setFormVideoPlacement(event.target.value as "home" | "reels" | "both")}
+                  >
+                    <option value="reels">Reels Tab (Vertical Feed)</option>
+                    <option value="home">Home Screen</option>
+                    <option value="both">Both Home Screen and Reels</option>
+                  </select>
+                </label>
+
+                <label className="block text-xs font-medium text-slate-700">
+                  Video Description / Clinical Guidance
+                  <textarea
+                    rows={2}
+                    maxLength={2000}
+                    placeholder="A short clinical summary or description for patient mobile feed"
+                    value={formSecondaryText}
+                    onChange={(event) => setFormSecondaryText(event.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs"
+                  />
+                </label>
               </div>
-              {videoSource === "youtube" ? <label className="block text-xs font-medium text-slate-600">YouTube video URL<input type="url" required placeholder="https://youtu.be/… or youtube.com/watch?v=…" value={formVideoUrl} onChange={(event) => setFormVideoUrl(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs" /></label> : <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-teal-300 bg-white p-3"><input type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v" className="sr-only" onChange={handleVideoFileSelect} disabled={savingVideo} /><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal-50 text-teal-700"><Video size={17} /></span><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-700">{videoFile?.name || "Choose a video"}</span><span className="mt-1 block text-[10px] text-slate-400">MP4, MOV, M4V or WebM · max 100 MB</span></span><span className="button button-secondary button-small">Browse</span></label>}
-              <label className="block text-xs font-medium text-slate-600">Show video in<select className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs" value={formVideoPlacement} onChange={(event) => setFormVideoPlacement(event.target.value as "home" | "reels" | "both")}><option value="home">Home screen</option><option value="reels">Reels</option><option value="both">Home screen and Reels</option></select></label>
-              <label className="block text-xs font-medium text-slate-600">Video description<textarea rows={2} maxLength={2000} placeholder="A short description for the app" value={formSecondaryText} onChange={(event) => setFormSecondaryText(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs" /></label>
-            </div>}
+            )}
 
             {/* Media Upload & URL with Live Preview */}
             {activeTab !== "videos" && <div className="space-y-2">
@@ -1405,19 +1594,34 @@ export function ContentManagement({
         </Modal>
       )}
 
-      {deleteTarget && <Modal
-        title={`Remove ${deleteTarget.kind === "videos" ? "video" : deleteTarget.kind === "reviews" ? "patient review" : "banner"}?`}
-        description="Please confirm before deleting this item from the app content library. This action cannot be undone."
-        submitLabel="Delete permanently"
-        submitVariant="danger"
-        onClose={() => setDeleteTarget(null)}
-        onSubmit={confirmDeleteItem}
-      >
-        <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-900">
-          <p className="font-semibold">{deleteTarget.title}</p>
-          <p className="mt-1 leading-5">The item will be removed from this content list immediately.</p>
-        </div>
-      </Modal>}
+      {deleteTarget && (
+        <Modal
+          title={`Permanently delete ${deleteTarget.kind === "videos" ? "video" : deleteTarget.kind === "reviews" ? "patient review" : "banner"}?`}
+          description={
+            deleteTarget.kind === "videos"
+              ? "This will completely delete this video record from the Dr. Hair database and remove it from patient home and reels feeds. This action cannot be undone."
+              : "Please confirm before deleting this item from the app content library. This action cannot be undone."
+          }
+          submitLabel={isDeletingItem ? "Deleting from database…" : "Delete permanently"}
+          submitDisabled={isDeletingItem}
+          submitVariant="danger"
+          onClose={() => !isDeletingItem && setDeleteTarget(null)}
+          onSubmit={confirmDeleteItem}
+        >
+          <div className="space-y-2 rounded-xl border border-rose-200 bg-rose-50/80 p-3.5 text-xs text-rose-950">
+            <div className="flex items-center gap-2 text-rose-700 font-semibold">
+              <AlertTriangle size={15} />
+              <span>Warning: Irreversible Database Deletion</span>
+            </div>
+            <p className="font-semibold text-slate-800">{deleteTarget.title}</p>
+            <p className="leading-5 text-slate-600">
+              {deleteTarget.kind === "videos"
+                ? "The video document will be permanently removed from the MongoDB database via the admin API. Mobile apps requesting this video will no longer receive it in their feed."
+                : "The item will be removed from this content list immediately."}
+            </p>
+          </div>
+        </Modal>
+      )}
       <FullSizeImageViewer image={imageToView} onClose={() => setImageToView(null)} />
     </div>
   );

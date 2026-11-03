@@ -1,9 +1,9 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import Image from "next/image";
 import {
-  Archive, ArrowDown, ArrowUp, BadgeCheck, Boxes, ImagePlus, Package,
+  Archive, ArrowDown, ArrowUp, BadgeCheck, Boxes, ImagePlus, Loader2, Package,
   PackagePlus, Pencil, Search, Star, Video, X,
 } from "lucide-react";
 import { Modal, StatusPill } from "../../shared/components/ui";
@@ -69,6 +69,14 @@ function formFor(product: ProductRecord | null): ProductFormState {
     name: "", category: "Hair growth", description: "", status: "Draft", rootCauses: [],
     supplyPlans: [newPlan()], benefitsText: "", ingredientsText: "", usageStepsText: "", clinicalClaimsText: "", media: [],
   };
+  const mediaItems: ProductMedia[] = product.media?.length
+    ? product.media
+    : (product.images || []).map((img, idx) => ({
+        name: img,
+        url: img,
+        kind: "image" as const,
+        isPrimary: idx === 0,
+      }));
   return {
     name: product.name, category: product.category, description: product.description,
     status: product.status, rootCauses: product.rootCauses ?? [], supplyPlans: getPlans(product),
@@ -76,7 +84,7 @@ function formFor(product: ProductRecord | null): ProductFormState {
     ingredientsText: asLines<ProductIngredient>(product.ingredients, (item) => `${item.name} | ${item.concentration} | ${item.purpose}`),
     usageStepsText: asLines<ProductUsageStep>(product.usageSteps, (item) => `${item.title} | ${item.description}`),
     clinicalClaimsText: asLines<ProductClinicalClaim>(product.clinicalClaims, (item) => `${item.percentage} | ${item.claim} | ${item.source}`),
-    media: product.media,
+    media: mediaItems,
   };
 }
 
@@ -135,11 +143,17 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
     const ingredients = parseLines(form.ingredientsText, 3).map(([name, concentration, purpose]) => ({ name, concentration, purpose }));
     const usageSteps = parseLines(form.usageStepsText, 2).map(([title, description]) => ({ title, description }));
     const clinicalClaims = parseLines(form.clinicalClaimsText, 3).map(([percentage, claim, source]) => ({ percentage, claim, source }));
+
+    const imageUrls = form.media
+      .filter((m) => m.kind === "image")
+      .map((m) => (m.url && m.url.startsWith("http") ? m.url : (m.name && m.name.startsWith("http") ? m.name : null)))
+      .filter(Boolean) as string[];
+
     const details = {
       name: form.name.trim(), sku: primary.sku, category: form.category,
       description: form.description.trim(), price: primary.price, compareAtPrice: primary.mrp,
       unitCost: primary.unitCost, stock: plans.reduce((sum, plan) => sum + plan.stock, 0),
-      status: form.status, media: form.media, rootCauses: form.rootCauses,
+      status: form.status, media: form.media, images: imageUrls, rootCauses: form.rootCauses,
       supplyPlans: plans, benefits, ingredients, usageSteps, clinicalClaims,
       updated: "Just now",
     };
@@ -273,54 +287,124 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
       </tbody></table></div>
       <div className="table-footer"><span>Showing {visibleProducts.length} of {products.length} products</span><span>Sales and inventory figures are sample data</span></div>
     </section>
-    <div className="notice commerce-media-note"><ImagePlus size={14} /><span>Product edits and stock adjustments stay in this browser preview. Product media uploads, stock reservation, and shop publishing require the future commerce APIs.</span></div>
+    <div className="notice commerce-media-note"><ImagePlus size={14} /><span>Product catalog is connected to live Cloudinary storage and database APIs. Uploaded images sync directly to customer mobile apps.</span></div>
 
-    {(editorProduct !== null || createProductOpen) && <ProductEditor product={editorProduct} onClose={() => { setEditorProduct(null); onCreateHandled(); }} onSave={saveProduct} />}
+    {(editorProduct !== null || createProductOpen) && <ProductEditor product={editorProduct} onClose={() => { setEditorProduct(null); onCreateHandled(); }} onSave={saveProduct} onToast={onToast} />}
     {selectedDetail && <ProductDetails product={selectedDetail} movements={movements.filter((movement) => movement.productId === selectedDetail.id)} onClose={() => setDetailProduct(null)} onEdit={() => { setEditorProduct(selectedDetail); setDetailProduct(null); }} onAdjustStock={() => setStockProduct(selectedDetail)} />}
     {selectedStock && <StockAdjustmentDialog product={selectedStock} onClose={() => setStockProduct(null)} onSave={(planId, delta, reason) => { const ok = applyStockAdjustment(selectedStock, planId, delta, reason); if (ok) setStockProduct(null); return ok; }} />}
     {archiveProduct && <Modal title="Archive this product?" description="The product will leave the shop but remain in historic order records." submitLabel="Archive product" onClose={() => setArchiveProduct(null)} onSubmit={archive}><div className="archive-confirm"><Archive size={17} /><span><strong>{archiveProduct.name}</strong><small>You can still find it by filtering for Archived products.</small></span></div></Modal>}
   </>;
 }
 
-function ProductEditor({ product, onClose, onSave }: {
+function ProductEditor({ product, onClose, onSave, onToast }: {
   product: ProductRecord | null;
   onClose: () => void;
   onSave: (form: ProductFormState, existing: ProductRecord | null) => boolean;
+  onToast: (message: string) => void;
 }) {
   const [form, setForm] = useState<ProductFormState>(() => formFor(product));
   const [previews, setPreviews] = useState<PreviewMedia[]>([]);
   const [imageToView, setImageToView] = useState<ViewerImage | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [urlInput, setUrlInput] = useState("");
   const activeUrls = useRef<string[]>([]);
   const setField = <K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) => setForm((current) => ({ ...current, [key]: value }));
   useEffect(() => () => activeUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
-  const pickMedia = (event: ChangeEvent<HTMLInputElement>) => {
+  const pickMedia = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
-    const picked = files.map((file) => ({ name: file.name, kind: file.type.startsWith("video/") ? "video" as const : "image" as const, url: URL.createObjectURL(file) }));
-    activeUrls.current.push(...picked.map((media) => media.url));
-    setPreviews((current) => [...current, ...picked]);
-    setField("media", [...form.media, ...picked.map(({ name, kind }, index) => ({ name, kind, isPrimary: form.media.length === 0 && index === 0 && kind === "image" }))]);
+    if (files.length === 0) return;
     event.target.value = "";
 
-    // Upload to Cloudinary storage via media upload API
-    files.forEach((file) => {
-      const formData = new FormData();
-      formData.set("file", file);
-      fetch("/api/admin/media/upload", {
-        method: "POST",
-        body: formData,
-        headers: { "X-Media-Purpose": "product" },
-      })
-        .then(async (res) => {
-          const body = await res.json().catch(() => ({}));
-          const cloudUrl = body?.data?.secure_url || body?.data?.url;
-          if (cloudUrl) {
-            setField("media", form.media.map((item) => (item.name === file.name ? { ...item, name: cloudUrl } : item)));
-          }
-        })
-        .catch(() => {});
-    });
+    setIsUploading(true);
+    setUploadStatus(`Uploading ${files.length} image${files.length > 1 ? "s" : ""} to Cloudinary...`);
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const localUrl = URL.createObjectURL(file);
+      activeUrls.current.push(localUrl);
+
+      const isVideo = file.type.startsWith("video/");
+      const kind = isVideo ? ("video" as const) : ("image" as const);
+      const tempId = `temp-${Date.now()}-${i}`;
+
+      setPreviews((current) => [...current, { name: tempId, url: localUrl, kind }]);
+      setUploadStatus(`Uploading ${file.name} to Cloudinary (${i + 1}/${files.length})...`);
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch("/api/admin/media/upload", {
+          method: "POST",
+          body: formData,
+          headers: { "X-Media-Purpose": "product" },
+        });
+
+        const body = await res.json().catch(() => ({}));
+        const cloudUrl = (body?.data?.url || body?.data?.secure_url || body?.data?.items?.[0]?.url) as string | undefined;
+
+        if (!res.ok || !cloudUrl) {
+          throw new Error(body?.message || `Failed to upload ${file.name} to Cloudinary.`);
+        }
+
+        setForm((prev) => {
+          const isFirstImage = !prev.media.some((m) => m.kind === "image");
+          return {
+            ...prev,
+            media: [
+              ...prev.media,
+              {
+                name: cloudUrl,
+                url: cloudUrl,
+                kind,
+                isPrimary: isFirstImage,
+                altText: file.name.replace(/\.[^/.]+$/, ""),
+              },
+            ],
+          };
+        });
+
+        setPreviews((current) => [...current, { name: cloudUrl, url: cloudUrl, kind }]);
+        onToast(`Uploaded ${file.name} to Cloudinary.`);
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : `Failed to upload ${file.name}`);
+      }
+    }
+
+    setIsUploading(false);
+    setUploadStatus("");
   };
+
+  const addDirectUrl = () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) return;
+    if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+      onToast("Enter a valid image URL starting with https://");
+      return;
+    }
+    setForm((prev) => {
+      const isFirstImage = !prev.media.some((m) => m.kind === "image");
+      return {
+        ...prev,
+        media: [
+          ...prev.media,
+          {
+            name: trimmed,
+            url: trimmed,
+            kind: "image",
+            isPrimary: isFirstImage,
+            altText: "Product photo",
+          },
+        ],
+      };
+    });
+    setPreviews((current) => [...current, { name: trimmed, url: trimmed, kind: "image" }]);
+    setUrlInput("");
+    onToast("Image URL added to gallery.");
+  };
+
   const updatePlan = (index: number, field: keyof ProductSupplyPlan, value: string) => setForm((current) => ({
     ...current, supplyPlans: current.supplyPlans.map((plan, planIndex) => planIndex === index ? {
       ...plan, [field]: ["price", "mrp", "unitCost", "stock", "lowStockThreshold"].includes(field) ? Number(value) : value,
@@ -336,7 +420,7 @@ function ProductEditor({ product, onClose, onSave }: {
   const removeMedia = (index: number) => {
     const removed = form.media[index];
     setField("media", form.media.filter((_, mediaIndex) => mediaIndex !== index));
-    const preview = previews.find((item) => item.name === removed.name);
+    const preview = previews.find((item) => item.name === removed.name || item.url === removed.url);
     if (preview) {
       URL.revokeObjectURL(preview.url);
       activeUrls.current = activeUrls.current.filter((url) => url !== preview.url);
@@ -344,14 +428,22 @@ function ProductEditor({ product, onClose, onSave }: {
     }
   };
 
-  return <><Modal className="product-editor-modal" title={product ? "Edit product" : "Add product"} description="Prepare the catalog content and every supply plan shown in the app." submitLabel={product ? "Save product" : "Add to catalog"} onClose={onClose} onSubmit={() => { if (onSave(form, product)) onClose(); }}>
+  return <><Modal
+    className="product-editor-modal"
+    title={product ? "Edit medicine / product" : "Add medicine / product"}
+    description="Manage product details, Cloudinary images, and supply plans shown in the patient app."
+    submitLabel={isUploading ? "Uploading media..." : (product ? "Save product" : "Add to catalog")}
+    submitDisabled={isUploading}
+    onClose={onClose}
+    onSubmit={() => { if (onSave(form, product)) onClose(); }}
+  >
     <div className="product-editor-section"><div className="product-editor-section-head"><div><h3>Store listing</h3><p>Name, category, and app filters</p></div><span className="product-section-number">01</span></div>
       <div className="product-form-grid">
-        <div className="field"><label htmlFor="product-name">Product name *</label><input id="product-name" value={form.name} onChange={(event) => setField("name", event.target.value)} placeholder="e.g. Daily scalp serum" /></div>
-        <div className="field"><label htmlFor="product-category">Shop category</label><select id="product-category" value={form.category} onChange={(event) => setField("category", event.target.value)}>{["Hair growth", "Scalp care", "Hair care", "Bundles"].map((category) => <option key={category}>{category}</option>)}</select></div>
-        <div className="field"><label htmlFor="product-status">Store status</label><select id="product-status" value={form.status} onChange={(event) => setField("status", event.target.value as ProductStatus)}><option>Draft</option><option>Active</option><option>Archived</option></select></div>
+        <div className="field"><label htmlFor="product-name">Product / medicine name *</label><input id="product-name" value={form.name} onChange={(event) => setField("name", event.target.value)} placeholder="e.g. Daily Scalp Serum 60ml" /></div>
+        <div className="field"><label htmlFor="product-category">Shop category</label><select id="product-category" value={form.category} onChange={(event) => setField("category", event.target.value)}>{["Hair growth", "Scalp care", "Hair care", "Bundles", "Therapeutic Cleanser", "Endocrine Support", "Anti-Androgen"].map((category) => <option key={category}>{category}</option>)}</select></div>
+        <div className="field"><label htmlFor="product-status">Store status</label><select id="product-status" value={form.status} onChange={(event) => setField("status", event.target.value as ProductStatus)}><option>Active</option><option>Draft</option><option>Archived</option></select></div>
         <div className="field"><span className="field-label">Concern tags used by app filters</span><div className="tag-choice-list">{rootCauseOptions.map((tag) => <label key={tag} className={`tag-choice ${form.rootCauses.includes(tag) ? "selected" : ""}`}><input type="checkbox" checked={form.rootCauses.includes(tag)} onChange={(event) => setField("rootCauses", event.target.checked ? [...form.rootCauses, tag] : form.rootCauses.filter((item) => item !== tag))} />{tag}</label>)}</div></div>
-        <div className="field field-span"><label htmlFor="product-description">Shop description</label><textarea id="product-description" className="product-description-input" value={form.description} onChange={(event) => setField("description", event.target.value)} placeholder="Describe the product and how customers use it." /></div>
+        <div className="field field-span"><label htmlFor="product-description">Shop description</label><textarea id="product-description" className="product-description-input" value={form.description} onChange={(event) => setField("description", event.target.value)} placeholder="Describe the medicine or product and how patients should use it." /></div>
       </div>
     </div>
 
@@ -382,21 +474,82 @@ function ProductEditor({ product, onClose, onSave }: {
       <p className="form-help claim-guidance">Only publish reviewed, evidence-backed health claims. Add a source for each claim shown to customers.</p>
     </div>
 
-    <div className="product-editor-section"><div className="product-editor-section-head"><div><h3>Photos & videos</h3><p>Choose the primary image, reorder the gallery, and add accessible descriptions</p></div><span className="product-section-number">03</span></div>
-      <label className="media-dropzone"><input type="file" accept="image/*,video/*" multiple onChange={pickMedia} /><span className="media-drop-icon"><ImagePlus size={17} /></span><span><strong>Add images or videos</strong><small>Selected files preview in this browser. Storage is added with the upload API.</small></span><span className="button button-secondary button-small">Browse files</span></label>
+    <div className="product-editor-section">
+      <div className="product-editor-section-head">
+        <div>
+          <h3>Product photos & media (Cloudinary)</h3>
+          <p>Upload medicine images to Cloudinary, or paste direct URLs. Primary image is displayed in the mobile app catalog.</p>
+        </div>
+        <span className="product-section-number">03</span>
+      </div>
+
+      {isUploading && (
+        <div className="mb-3 flex items-center gap-2.5 rounded-lg border border-teal-200 bg-teal-50 px-3.5 py-2.5 text-xs text-teal-800 animate-pulse">
+          <Loader2 size={16} className="animate-spin text-teal-600 shrink-0" />
+          <span className="font-medium">{uploadStatus || "Uploading to Cloudinary..."}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+        <label className="media-dropzone cursor-pointer hover:border-teal-400 transition-colors">
+          <input type="file" accept="image/*,video/*" multiple onChange={pickMedia} disabled={isUploading} />
+          <span className="media-drop-icon"><ImagePlus size={18} /></span>
+          <span>
+            <strong>Upload from device</strong>
+            <small>Directly uploads to Cloudinary storage and creates a permanent secure URL.</small>
+          </span>
+          <span className="button button-secondary button-small">{isUploading ? "Uploading..." : "Browse files"}</span>
+        </label>
+
+        <div className="flex flex-col justify-between p-3.5 rounded-xl border border-slate-200 bg-slate-50/60">
+          <div className="mb-2">
+            <strong className="text-xs font-semibold text-slate-800 block">Or add via Image / Cloudinary URL</strong>
+            <small className="text-[11px] text-slate-500">Paste any public image link or Cloudinary secure URL</small>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="https://res.cloudinary.com/.../medicine.jpg"
+              className="flex-1 text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDirectUrl(); } }}
+            />
+            <button
+              type="button"
+              className="button button-secondary button-small shrink-0"
+              onClick={addDirectUrl}
+              disabled={!urlInput.trim()}
+            >
+              Add URL
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="product-media-manager">{form.media.map((media, index) => {
-        const preview = previews.find((item) => item.name === media.name);
+        const displayUrl = (media.url && media.url.startsWith("http") ? media.url : (media.name && media.name.startsWith("http") ? media.name : null)) || previews.find((item) => item.name === media.name || item.url === media.url)?.url;
         const Icon = media.kind === "video" ? Video : Package;
+        const isCloudinary = displayUrl?.includes("cloudinary.com");
         return <div className="product-media-row" key={`${media.name}-${index}`}>
-          <button type="button" className="product-media-thumb" aria-label={`View ${media.name} full size`} disabled={preview?.kind !== "image"} onClick={() => preview?.kind === "image" && setImageToView({ src: preview.url, alt: media.altText || media.name, fileName: media.name, caption: "Product image preview" })}>{preview?.kind === "image" ? <Image src={preview.url} alt="" width={30} height={30} unoptimized /> : <Icon size={15} />}</button>
-          <span className="product-media-name" title={media.name}>{media.name}<small>{media.kind}</small></span>
+          <button type="button" className="product-media-thumb" aria-label={`View ${media.name} full size`} disabled={media.kind !== "image" || !displayUrl} onClick={() => displayUrl && setImageToView({ src: displayUrl, alt: media.altText || media.name, fileName: media.name, caption: "Product image preview" })}>
+            {displayUrl && media.kind === "image" ? <img src={displayUrl} alt="" className="w-full h-full object-cover" /> : <Icon size={15} />}
+          </button>
+          <span className="product-media-name" title={media.url || media.name}>
+            <span className="flex items-center gap-1.5 font-medium truncate">
+              {media.isPrimary && <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1"><Star size={10} className="fill-amber-500 text-amber-500" /> Primary</span>}
+              {isCloudinary && <span className="inline-flex items-center text-[8px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">Cloudinary</span>}
+              <span className="truncate">{media.name}</span>
+            </span>
+            <small>{media.kind} · {displayUrl ? "Live URL" : "Local"}</small>
+          </span>
           <input aria-label={`Alt text for ${media.name}`} value={media.altText ?? ""} onChange={(event) => updateMedia(index, { altText: event.target.value })} placeholder="Alt text or caption" />
-          <button type="button" className={`row-action ${media.isPrimary ? "primary-media-selected" : ""}`} aria-label={media.isPrimary ? "Primary image" : `Set ${media.name} as primary image`} onClick={() => setField("media", form.media.map((item, mediaIndex) => ({ ...item, isPrimary: mediaIndex === index && item.kind === "image" })))} disabled={media.kind !== "image"}><Star size={14} /></button>
-          <button type="button" className="row-action" aria-label={`Move ${media.name} up`} disabled={index === 0} onClick={() => moveMedia(index, -1)}><ArrowUp size={14} /></button>
-          <button type="button" className="row-action" aria-label={`Move ${media.name} down`} disabled={index === form.media.length - 1} onClick={() => moveMedia(index, 1)}><ArrowDown size={14} /></button>
-          <button type="button" className="row-action danger-action" aria-label={`Remove ${media.name}`} onClick={() => removeMedia(index)}><X size={14} /></button>
+          <button type="button" className={`row-action ${media.isPrimary ? "primary-media-selected" : ""}`} aria-label={media.isPrimary ? "Primary image" : `Set ${media.name} as primary image`} onClick={() => setField("media", form.media.map((item, mediaIndex) => ({ ...item, isPrimary: mediaIndex === index && item.kind === "image" })))} disabled={media.kind !== "image"} title="Set as primary image"><Star size={14} className={media.isPrimary ? "fill-amber-500 text-amber-500" : ""} /></button>
+          <button type="button" className="row-action" aria-label={`Move ${media.name} up`} disabled={index === 0} onClick={() => moveMedia(index, -1)} title="Move up"><ArrowUp size={14} /></button>
+          <button type="button" className="row-action" aria-label={`Move ${media.name} down`} disabled={index === form.media.length - 1} onClick={() => moveMedia(index, 1)} title="Move down"><ArrowDown size={14} /></button>
+          <button type="button" className="row-action danger-action" aria-label={`Remove ${media.name}`} onClick={() => removeMedia(index)} title="Remove"><X size={14} /></button>
         </div>;
-      })}{form.media.length === 0 && <div className="media-empty product-media-empty">No media added yet.</div>}</div>
+      })}{form.media.length === 0 && <div className="media-empty product-media-empty">No medicine images added yet. Upload from device or paste an image URL above.</div>}</div>
     </div>
   </Modal><FullSizeImageViewer image={imageToView} onClose={() => setImageToView(null)} /></>;
 }
@@ -419,7 +572,27 @@ function ProductDetails({ product, movements, onClose, onEdit, onAdjustStock }: 
       {product.usageSteps?.length ? <DetailList title="Usage" items={product.usageSteps.map((item) => `${item.title} — ${item.description}`)} /> : null}
       {product.clinicalClaims?.length ? <DetailList title="Claims & sources" items={product.clinicalClaims.map((item) => `${item.percentage ? `${item.percentage} · ` : ""}${item.claim} — ${item.source}`)} /> : null}
     </section> : null}
-    <section className="product-detail-section"><h3>Media gallery · {product.media.length}</h3><div className="media-chip-list">{product.media.map((media, index) => <span className="media-chip read-only" key={`${media.name}-${index}`}>{media.isPrimary && <Star size={12} fill="currentColor" />}{media.kind === "video" ? <Video size={14} /> : <Package size={14} />}<span>{media.name}{media.altText ? ` · ${media.altText}` : ""}</span></span>)}</div></section>
+    <section className="product-detail-section">
+      <h3>Media gallery · {product.media?.length ?? 0}</h3>
+      <div className="flex flex-wrap gap-2.5">
+        {(product.media || []).map((media, index) => {
+          const displayUrl = (media.url && media.url.startsWith("http") ? media.url : (media.name && media.name.startsWith("http") ? media.name : null));
+          return (
+            <div key={`${media.name}-${index}`} className="flex items-center gap-2 border border-slate-200 rounded-lg p-1.5 bg-slate-50 text-xs">
+              {displayUrl && media.kind === "image" ? (
+                <img src={displayUrl} alt="" className="w-8 h-8 rounded object-cover" />
+              ) : media.kind === "video" ? (
+                <Video size={16} className="text-slate-500 ml-1" />
+              ) : (
+                <Package size={16} className="text-slate-500 ml-1" />
+              )}
+              <span className="max-w-[120px] truncate text-[11px] font-medium">{media.altText || media.name}</span>
+              {media.isPrimary && <span className="text-[9px] bg-amber-100 text-amber-800 font-semibold px-1 rounded">Primary</span>}
+            </div>
+          );
+        })}
+      </div>
+    </section>
     <section className="product-detail-section"><h3>Recent inventory changes</h3>{movements.length ? <div className="stock-movement-list">{movements.slice(0, 5).map((movement) => <div key={movement.id}><span><strong>{movement.variantTitle}</strong><small>{movement.reason} · {new Date(movement.createdAt).toLocaleString()}</small></span><strong className={movement.quantityChange > 0 ? "stock-increase" : "stock-decrease"}>{movement.quantityChange > 0 ? "+" : ""}{movement.quantityChange}</strong></div>)}</div> : <p className="card-note">No manual stock changes recorded in this preview.</p>}</section>
     <section className="product-detail-section product-performance-detail"><h3>Sales performance · sample figures</h3><div className="product-detail-grid"><DetailItem label="Units sold" value={product.unitsSold.toLocaleString("en-IN")} /><DetailItem label="Net sales" value={formatCurrency(product.revenue)} /><DetailItem label="Last updated" value={product.updated} /></div></section>
   </Modal>;

@@ -46,13 +46,18 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
   }, [coupons, setCoupons]);
 
   useEffect(() => {
+    // Purge any legacy demo products from session storage
+    setProducts((current) => current.filter((p) => !p.id.startsWith("PRD-10") && !p.id.startsWith("demo-")));
+  }, [setProducts]);
+
+  useEffect(() => {
     const controller = new AbortController();
     fetch("/api/admin/products", { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) return;
         const items = body?.data?.items || body?.data;
-        if (Array.isArray(items) && items.length > 0) {
+        if (Array.isArray(items)) {
           const normalized: ProductRecord[] = items.map((raw: Record<string, unknown>) => {
             const rawStatus = String(raw.status || "active").toLowerCase();
             const status: ProductStatus =
@@ -77,9 +82,10 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
               unitsSold: Number(raw.unitsSold || raw.units_sold) || 0,
               revenue: Number(raw.revenue) || 0,
               status,
+              images: rawImages,
               media: Array.isArray(raw.media) && raw.media.length > 0
                 ? (raw.media as ProductRecord["media"])
-                : rawImages.map((img: string) => ({ name: img, kind: "image" as const })),
+                : rawImages.map((img: string) => ({ name: img, url: img, kind: "image" as const })),
               rootCauses: Array.isArray(raw.rootCauses || raw.root_causes)
                 ? ((raw.rootCauses || raw.root_causes) as string[])
                 : [String(raw.rootCause || raw.root_cause || "Hair")],
@@ -108,11 +114,8 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
             };
           });
 
-          setProducts((current) => {
-            const apiIds = new Set(normalized.map((i) => i.id));
-            const existingNonApi = current.filter((c) => !apiIds.has(c.id));
-            return [...normalized, ...existingNonApi];
-          });
+          // Show only uploaded products from the database
+          setProducts(normalized);
         }
       })
       .catch(() => {});

@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   Archive, ArrowDown, ArrowUp, BadgeCheck, Boxes, ImagePlus, Loader2, Package,
-  PackagePlus, Pencil, Search, Star, Video, X,
+  PackagePlus, Pencil, Search, Star, Trash2, Video, X,
 } from "lucide-react";
 import { Modal, StatusPill } from "../../shared/components/ui";
 import { FullSizeImageViewer, type ViewerImage } from "../../shared/components/full-size-image-viewer";
@@ -110,6 +110,8 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
   const [detailProduct, setDetailProduct] = useState<ProductRecord | null>(null);
   const [archiveProduct, setArchiveProduct] = useState<ProductRecord | null>(null);
   const [stockProduct, setStockProduct] = useState<ProductRecord | null>(null);
+  const [deleteProduct, setDeleteProduct] = useState<ProductRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [movements, setMovements] = useSessionState<StockMovement[]>("drhair-commerce-stock-movements", []);
   const visibleProducts = products.filter((product) =>
     `${product.name} ${product.sku} ${product.category} ${(product.rootCauses ?? []).join(" ")}`.toLowerCase().includes(query.toLowerCase()) &&
@@ -236,10 +238,36 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
     if (!archiveProduct) return;
     onProductsChange((current) => current.map((item) => item.id === archiveProduct.id ? { ...item, status: "Archived", updated: "Just now" } : item));
     fetch(`/api/admin/products/${encodeURIComponent(archiveProduct.id)}`, {
-      method: "DELETE",
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "archived" }),
     }).catch(() => {});
     onToast(`${archiveProduct.name} archived. Its past order history is preserved.`);
     setArchiveProduct(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteProduct) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/products/${encodeURIComponent(deleteProduct.id)}`, {
+        method: "DELETE",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.message || "Failed to delete product from database.");
+      }
+      onProductsChange((current) => current.filter((p) => p.id !== deleteProduct.id));
+      onToast(`"${deleteProduct.name}" permanently deleted from database.`);
+      setDeleteProduct(null);
+      if (detailProduct?.id === deleteProduct.id) {
+        setDetailProduct(null);
+      }
+    } catch (err) {
+      onToast(err instanceof Error ? err.message : "Error deleting product from database.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const selectedDetail = detailProduct ? products.find((item) => item.id === detailProduct.id) ?? detailProduct : null;
@@ -267,8 +295,30 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
           const lead = featuredPlan(plans);
           const margin = lead.price ? ((lead.price - lead.unitCost) / lead.price) * 100 : 0;
           const stock = stockLabel(product);
+          const leadImage = (product.images && product.images.length > 0 ? product.images[0] : null) ||
+            product.media?.find((m) => m.isPrimary && (m.url || m.name))?.url ||
+            product.media?.find((m) => m.isPrimary && (m.url || m.name))?.name ||
+            product.media?.[0]?.url ||
+            (product.media?.[0]?.name?.startsWith("http") ? product.media[0].name : null);
           return <tr key={product.id}>
-            <td><button className="product-title-button" onClick={() => setDetailProduct(product)}><span className="product-table-icon"><Package size={15} /></span><span><strong>{product.name}</strong><small>{product.category} · {(product.rootCauses ?? []).join(", ") || "No app tags"}</small></span></button></td>
+            <td>
+              <button className="product-title-button" onClick={() => setDetailProduct(product)}>
+                <span className="product-table-icon">
+                  {leadImage && (leadImage.startsWith("http://") || leadImage.startsWith("https://")) ? (
+                    <img
+                      src={leadImage}
+                      alt={product.name}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <Package size={15} />
+                  )}
+                </span>
+                <span><strong>{product.name}</strong><small>{product.category} · {(product.rootCauses ?? []).join(", ") || "No app tags"}</small></span>
+              </button>
+            </td>
             <td><strong>{plans.length} plan{plans.length === 1 ? "" : "s"}</strong><small className="strike-price">{plans.map((plan) => plan.title).join(" · ")}</small></td>
             <td><strong>{formatCurrency(cheapest.price)}</strong>{cheapest.mrp > cheapest.price && <small className="strike-price">MRP {formatCurrency(cheapest.mrp)}</small>}</td>
             <td><span className="margin-pill">{margin.toFixed(0)}%</span><small className="strike-price">Lead plan</small></td>
@@ -276,10 +326,11 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
             <td><span className={stock.low ? "stock-low" : ""}>{stock.label}</span></td>
             <td><StatusPill status={product.status} /></td>
             <td><div className="table-actions">
-              <button className="row-action" aria-label={`View ${product.name}`} onClick={() => setDetailProduct(product)}><Package size={14} /></button>
-              <button className="row-action" aria-label={`Adjust ${product.name} stock`} onClick={() => setStockProduct(product)}><PackagePlus size={14} /></button>
-              <button className="row-action" aria-label={`Edit ${product.name}`} onClick={() => setEditorProduct(product)}><Pencil size={14} /></button>
-              {product.status !== "Archived" && <button className="row-action" aria-label={`Archive ${product.name}`} onClick={() => setArchiveProduct(product)}><Archive size={14} /></button>}
+              <button className="row-action" aria-label={`View ${product.name}`} title="View details" onClick={() => setDetailProduct(product)}><Package size={14} /></button>
+              <button className="row-action" aria-label={`Adjust ${product.name} stock`} title="Adjust inventory" onClick={() => setStockProduct(product)}><PackagePlus size={14} /></button>
+              <button className="row-action" aria-label={`Edit ${product.name}`} title="Edit product" onClick={() => setEditorProduct(product)}><Pencil size={14} /></button>
+              {product.status !== "Archived" && <button className="row-action" aria-label={`Archive ${product.name}`} title="Archive product" onClick={() => setArchiveProduct(product)}><Archive size={14} /></button>}
+              <button className="row-action danger-action" aria-label={`Delete ${product.name} permanently`} title="Delete product permanently from database" onClick={() => setDeleteProduct(product)}><Trash2 size={14} /></button>
             </div></td>
           </tr>;
         })}
@@ -290,9 +341,33 @@ export function ProductsPanel({ products, onProductsChange, createProductOpen, o
     <div className="notice commerce-media-note"><ImagePlus size={14} /><span>Product catalog is connected to live Cloudinary storage and database APIs. Uploaded images sync directly to customer mobile apps.</span></div>
 
     {(editorProduct !== null || createProductOpen) && <ProductEditor product={editorProduct} onClose={() => { setEditorProduct(null); onCreateHandled(); }} onSave={saveProduct} onToast={onToast} />}
-    {selectedDetail && <ProductDetails product={selectedDetail} movements={movements.filter((movement) => movement.productId === selectedDetail.id)} onClose={() => setDetailProduct(null)} onEdit={() => { setEditorProduct(selectedDetail); setDetailProduct(null); }} onAdjustStock={() => setStockProduct(selectedDetail)} />}
+    {selectedDetail && <ProductDetails product={selectedDetail} movements={movements.filter((movement) => movement.productId === selectedDetail.id)} onClose={() => setDetailProduct(null)} onEdit={() => { setEditorProduct(selectedDetail); setDetailProduct(null); }} onAdjustStock={() => setStockProduct(selectedDetail)} onDelete={() => { setDeleteProduct(selectedDetail); setDetailProduct(null); }} />}
     {selectedStock && <StockAdjustmentDialog product={selectedStock} onClose={() => setStockProduct(null)} onSave={(planId, delta, reason) => { const ok = applyStockAdjustment(selectedStock, planId, delta, reason); if (ok) setStockProduct(null); return ok; }} />}
     {archiveProduct && <Modal title="Archive this product?" description="The product will leave the shop but remain in historic order records." submitLabel="Archive product" onClose={() => setArchiveProduct(null)} onSubmit={archive}><div className="archive-confirm"><Archive size={17} /><span><strong>{archiveProduct.name}</strong><small>You can still find it by filtering for Archived products.</small></span></div></Modal>}
+    {deleteProduct && (
+      <Modal
+        title="Delete product permanently?"
+        description="This will permanently delete this medicine from the MongoDB database and remove it from mobile apps."
+        submitLabel={isDeleting ? "Deleting..." : "Delete from database"}
+        submitDisabled={isDeleting}
+        submitVariant="danger"
+        onClose={() => { if (!isDeleting) setDeleteProduct(null); }}
+        onSubmit={confirmDelete}
+      >
+        <div className="flex items-start gap-3 p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-900 text-xs">
+          <Trash2 size={20} className="text-rose-600 shrink-0 mt-0.5" />
+          <div className="grid gap-1">
+            <strong className="text-sm font-semibold">{deleteProduct.name}</strong>
+            <p className="text-rose-700">
+              SKU: <span className="font-mono font-medium">{deleteProduct.sku}</span> · ID: <span className="font-mono">{deleteProduct.id}</span>
+            </p>
+            <p className="text-[11px] text-rose-600 mt-1">
+              Warning: This action permanently deletes the medicine from the database. It cannot be undone.
+            </p>
+          </div>
+        </div>
+      </Modal>
+    )}
   </>;
 }
 
@@ -330,6 +405,22 @@ function ProductEditor({ product, onClose, onSave, onToast }: {
       const tempId = `temp-${Date.now()}-${i}`;
 
       setPreviews((current) => [...current, { name: tempId, url: localUrl, kind }]);
+      setForm((prev) => {
+        const isFirstImage = !prev.media.some((m) => m.kind === "image");
+        return {
+          ...prev,
+          media: [
+            ...prev.media,
+            {
+              name: tempId,
+              url: localUrl,
+              kind,
+              isPrimary: isFirstImage,
+              altText: file.name.replace(/\.[^/.]+$/, ""),
+            },
+          ],
+        };
+      });
       setUploadStatus(`Uploading ${file.name} to Cloudinary (${i + 1}/${files.length})...`);
 
       try {
@@ -349,26 +440,26 @@ function ProductEditor({ product, onClose, onSave, onToast }: {
           throw new Error(body?.message || `Failed to upload ${file.name} to Cloudinary.`);
         }
 
-        setForm((prev) => {
-          const isFirstImage = !prev.media.some((m) => m.kind === "image");
-          return {
-            ...prev,
-            media: [
-              ...prev.media,
-              {
-                name: cloudUrl,
-                url: cloudUrl,
-                kind,
-                isPrimary: isFirstImage,
-                altText: file.name.replace(/\.[^/.]+$/, ""),
-              },
-            ],
-          };
-        });
+        setForm((prev) => ({
+          ...prev,
+          media: prev.media.map((m) =>
+            m.name === tempId
+              ? { ...m, name: cloudUrl, url: cloudUrl }
+              : m
+          ),
+        }));
 
-        setPreviews((current) => [...current, { name: cloudUrl, url: cloudUrl, kind }]);
+        setPreviews((current) => [
+          ...current.filter((p) => p.name !== tempId),
+          { name: cloudUrl, url: cloudUrl, kind },
+        ]);
         onToast(`Uploaded ${file.name} to Cloudinary.`);
       } catch (err) {
+        setForm((prev) => ({
+          ...prev,
+          media: prev.media.filter((m) => m.name !== tempId),
+        }));
+        setPreviews((current) => current.filter((p) => p.name !== tempId));
         onToast(err instanceof Error ? err.message : `Failed to upload ${file.name}`);
       }
     }
@@ -528,9 +619,16 @@ function ProductEditor({ product, onClose, onSave, onToast }: {
       </div>
 
       <div className="product-media-manager">{form.media.map((media, index) => {
-        const displayUrl = (media.url && media.url.startsWith("http") ? media.url : (media.name && media.name.startsWith("http") ? media.name : null)) || previews.find((item) => item.name === media.name || item.url === media.url)?.url;
+        const displayUrl =
+          (media.url && (media.url.startsWith("http") || media.url.startsWith("blob:"))
+            ? media.url
+            : media.name && (media.name.startsWith("http") || media.name.startsWith("blob:"))
+            ? media.name
+            : null) ||
+          previews.find((item) => item.name === media.name || item.url === media.url)?.url;
         const Icon = media.kind === "video" ? Video : Package;
         const isCloudinary = displayUrl?.includes("cloudinary.com");
+        const isTemp = media.name.startsWith("temp-") || displayUrl?.startsWith("blob:");
         return <div className="product-media-row" key={`${media.name}-${index}`}>
           <button type="button" className="product-media-thumb" aria-label={`View ${media.name} full size`} disabled={media.kind !== "image" || !displayUrl} onClick={() => displayUrl && setImageToView({ src: displayUrl, alt: media.altText || media.name, fileName: media.name, caption: "Product image preview" })}>
             {displayUrl && media.kind === "image" ? <img src={displayUrl} alt="" className="w-full h-full object-cover" /> : <Icon size={15} />}
@@ -538,10 +636,14 @@ function ProductEditor({ product, onClose, onSave, onToast }: {
           <span className="product-media-name" title={media.url || media.name}>
             <span className="flex items-center gap-1.5 font-medium truncate">
               {media.isPrimary && <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1"><Star size={10} className="fill-amber-500 text-amber-500" /> Primary</span>}
-              {isCloudinary && <span className="inline-flex items-center text-[8px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">Cloudinary</span>}
+              {isTemp ? (
+                <span className="inline-flex items-center gap-1 text-[8px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded px-1"><Loader2 size={9} className="animate-spin text-teal-600" /> Uploading...</span>
+              ) : isCloudinary ? (
+                <span className="inline-flex items-center text-[8px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">Cloudinary</span>
+              ) : null}
               <span className="truncate">{media.name}</span>
             </span>
-            <small>{media.kind} · {displayUrl ? "Live URL" : "Local"}</small>
+            <small>{media.kind} · {isTemp ? "Uploading to Cloudinary..." : displayUrl ? "Live URL" : "Local"}</small>
           </span>
           <input aria-label={`Alt text for ${media.name}`} value={media.altText ?? ""} onChange={(event) => updateMedia(index, { altText: event.target.value })} placeholder="Alt text or caption" />
           <button type="button" className={`row-action ${media.isPrimary ? "primary-media-selected" : ""}`} aria-label={media.isPrimary ? "Primary image" : `Set ${media.name} as primary image`} onClick={() => setField("media", form.media.map((item, mediaIndex) => ({ ...item, isPrimary: mediaIndex === index && item.kind === "image" })))} disabled={media.kind !== "image"} title="Set as primary image"><Star size={14} className={media.isPrimary ? "fill-amber-500 text-amber-500" : ""} /></button>
@@ -554,16 +656,17 @@ function ProductEditor({ product, onClose, onSave, onToast }: {
   </Modal><FullSizeImageViewer image={imageToView} onClose={() => setImageToView(null)} /></>;
 }
 
-function ProductDetails({ product, movements, onClose, onEdit, onAdjustStock }: {
+function ProductDetails({ product, movements, onClose, onEdit, onAdjustStock, onDelete }: {
   product: ProductRecord;
   movements: StockMovement[];
   onClose: () => void;
   onEdit: () => void;
   onAdjustStock: () => void;
+  onDelete: () => void;
 }) {
   const plans = getPlans(product);
   return <Modal className="product-details-modal" title={product.name} description={`${product.id} · ${product.category} · ${(product.rootCauses ?? []).join(", ") || "No app concern tags"}`} submitLabel="Edit product" onClose={onClose} onSubmit={onEdit}>
-    <div className="product-detail-toolbar"><StatusPill status={product.status} /><div><button className="button button-secondary button-small" onClick={onAdjustStock}><PackagePlus size={13} />Adjust stock</button><button className="button button-secondary button-small" onClick={onEdit}><Pencil size={13} />Edit listing</button></div></div>
+    <div className="product-detail-toolbar"><StatusPill status={product.status} /><div className="flex items-center gap-2"><button className="button button-secondary button-small" onClick={onAdjustStock}><PackagePlus size={13} />Adjust stock</button><button className="button button-secondary button-small" onClick={onEdit}><Pencil size={13} />Edit listing</button><button className="button button-danger button-small" onClick={onDelete}><Trash2 size={13} />Delete</button></div></div>
     <p className="product-detail-copy">{product.description || "No product description added yet."}</p>
     <section className="product-detail-section"><h3>Supply plans & inventory</h3>{plans.map((plan) => <div className="product-plan-detail" key={plan.id}><span><strong>{plan.title}</strong><small>{plan.subtitle} · {plan.sku}</small></span><span><strong>{formatCurrency(plan.price)}</strong><small>MRP {plan.mrp ? formatCurrency(plan.mrp) : "—"}</small></span><span><strong className={plan.stock <= plan.lowStockThreshold ? "stock-low" : ""}>{plan.stock} units</strong><small>Alert below {plan.lowStockThreshold}</small></span></div>)}</section>
     {(product.benefits?.length || product.ingredients?.length || product.usageSteps?.length || product.clinicalClaims?.length) ? <section className="product-detail-section product-app-detail-grid">

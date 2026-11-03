@@ -129,7 +129,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
       case "bookings": return <OperationsPage key={bookingDate} kind="bookings" globalSearch={globalSearch} onToast={showToast} permissions={permissions} onAudit={recordAudit} initialDateFilter={bookingDate} />;
       case "notifications": return <NotificationCenter role={role} userName={visibleName} permissions={permissions} events={events} onNavigate={navigate} />;
       case "team": return role === "super-admin" ? <AdminAccountManagement /> : <Denied />;
-      case "activity": return role === "super-admin" ? <AuditLog globalSearch={globalSearch} onToast={showToast} events={events} /> : <Denied />;
+      case "activity": return role === "super-admin" ? <AuditLog globalSearch={globalSearch} onToast={showToast} events={events} role={role} onOpenPatient={(patientId) => router.push(`/patients/${encodeURIComponent(patientId)}`)} onAudit={recordAudit} /> : <Denied />;
     }
   }, [actorName, adminRecords, bookingDate, changePanelAccess, dashboardAnchor, events, features, globalSearch, initialPatientId, navigate, page, panelAccess, permissions, recordAudit, role, router, setFeatures, showToast, visibleName]);
 

@@ -28,3 +28,19 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return noStoreJson({ message: "Patient profile could not be updated." }, 503);
   }
 }
+
+export async function DELETE(_request: Request, { params }: RouteContext) {
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+  if (!token) return noStoreJson({ message: "Sign in as Super Admin to delete user account." }, 401);
+  const { userId } = await params;
+  try {
+    const upstream = await fetch(backendUrl(`/api/v1/admin/users/${encodeURIComponent(userId)}`), {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+    });
+    return noStoreJson(await readJson(upstream), upstream.status);
+  } catch {
+    return noStoreJson({ message: "User account could not be deleted." }, 503);
+  }
+}

@@ -2,7 +2,9 @@ import { cookies } from "next/headers";
 import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../../_lib/backend";
 
 export async function POST(request: Request) {
-  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
+  const authHeader = request.headers.get("authorization") || "";
+  const headerToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value || headerToken;
   if (!token) return noStoreJson({ message: "Sign in to upload media." }, 401);
 
   const contentType = request.headers.get("content-type") || "";

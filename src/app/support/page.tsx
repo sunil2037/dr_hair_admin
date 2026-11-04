@@ -50,7 +50,7 @@ export default function SupportPage() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !contact.trim() || !message.trim()) {
       setError("Please fill in your name, contact details, and message.");
@@ -60,10 +60,28 @@ export default function SupportPage() {
     setSubmitting(true);
     setError("");
 
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/support/inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: contact.trim(),
+          email: contact.includes("@") ? contact.trim().toLowerCase() : null,
+          message: `[${category}] ${message.trim()}`,
+        }),
+      });
+      if (response.ok) {
+        setSubmitted(true);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setError(data.message || "Failed to submit inquiry. Please try again.");
+      }
+    } catch {
+      setError("Network error. Please try again later or call our clinic directly.");
+    } finally {
       setSubmitting(false);
-      setSubmitted(true);
-    }, 700);
+    }
   };
 
   return (

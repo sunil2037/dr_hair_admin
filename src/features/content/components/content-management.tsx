@@ -95,6 +95,22 @@ function mapSavedVideo(item: Record<string, unknown>): VideoContentItem {
   };
 }
 
+function mapSavedReview(item: Record<string, unknown>): ReviewContentItem {
+  return {
+    id: String(item.id || ""),
+    patientName: String(item.name || item.patientName || "Verified Patient"),
+    rating: typeof item.rating === "number" ? item.rating : 5,
+    category: String(item.category || "General"),
+    treatment: String(item.treatment || item.category || "Hair Care"),
+    duration: String(item.duration || "Verified Patient"),
+    comment: String(item.message || item.comment || ""),
+    avatar: String(item.avatar || ""),
+    verified: Boolean(item.is_verified ?? item.verified ?? true),
+    status: item.status === "active" ? "Published" : item.status === "rejected" ? "Inactive" : "Review",
+    updated: item.created_at ? new Date(String(item.created_at)).toLocaleDateString("en-IN") : "Recent",
+  };
+}
+
 export function ContentManagement({
   mode,
   onToast,
@@ -176,6 +192,44 @@ export function ContentManagement({
     } finally {
       setIsRefreshingVideos(false);
     }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "reviews" || (!canEdit && !canPublish)) return;
+    const controller = new AbortController();
+    fetch("/api/admin/reviews", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+        const items = Array.isArray(result?.data?.items) ? result.data.items : [];
+        if (items.length > 0) {
+          setReviews(items.map(mapSavedReview));
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [activeTab, canEdit, canPublish, setReviews]);
+
+  const toggleReviewModerationStatus = async (review: ReviewContentItem) => {
+    const nextStatus = review.status === "Published" ? "rejected" : "active";
+    const numericId = parseInt(review.id.replace(/\D/g, ""), 10);
+    if (!isNaN(numericId)) {
+      try {
+        const response = await fetch("/api/admin/reviews", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: numericId, status: nextStatus }),
+        });
+        if (response.ok) {
+          onToast(nextStatus === "active" ? "Review approved & published to app." : "Review moved to rejected.");
+        }
+      } catch (_) {}
+    }
+    setReviews((prev) =>
+      prev.map((r) =>
+        r.id === review.id ? { ...r, status: nextStatus === "active" ? "Published" : "Inactive" } : r
+      )
+    );
   };
 
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
@@ -1114,6 +1168,15 @@ export function ContentManagement({
                   <span className="text-[10px]">Updated {rev.updated}</span>
                   <div className="flex items-center gap-1">
                     <button
+                      type="button"
+                      onClick={() => void toggleReviewModerationStatus(rev)}
+                      disabled={!canPublish}
+                      className="p-1.5 text-slate-500 hover:text-teal-700 rounded hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={canPublish ? (rev.status === "Published" ? "Reject review" : "Approve review") : "Publishing permission required"}
+                    >
+                      <CheckCircle2 size={13} />
+                    </button>
+                    <button
                       onClick={() => openEditModal(rev)}
                       className="p-1.5 text-slate-500 hover:text-teal-700 rounded hover:bg-slate-100"
                       title="Edit review"
@@ -1178,6 +1241,15 @@ export function ContentManagement({
                     <td><StatusPill status={r.status} /></td>
                     <td>
                       <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void toggleReviewModerationStatus(r)}
+                          className="row-action text-slate-500 hover:text-teal-700"
+                          disabled={!canPublish}
+                          title={canPublish ? (r.status === "Published" ? "Reject review" : "Approve review") : "Publishing permission required"}
+                        >
+                          <CheckCircle2 size={14} />
+                        </button>
                         <button onClick={() => openEditModal(r)} className="row-action" title="Edit"><Pencil size={14} /></button>
                         <button onClick={() => handleDeleteItem(r.id)} className="row-action hover:text-rose-600" title="Delete"><Trash2 size={14} /></button>
                       </div>

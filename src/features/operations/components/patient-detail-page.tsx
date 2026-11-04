@@ -212,6 +212,13 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
       if (!response.ok) throw new Error(messageFrom(result, "Suggestion could not be saved."));
       const data = isRecord(result) && isRecord(result.data) ? result.data : null;
       if (data) setDetails((current) => current ? { ...current, treatments: [data as unknown as Treatment, ...current.treatments] } : current);
+      if (kind === "diet" && payload.diet_meals) {
+        await fetch(`/api/admin/users/${patientId}/diet-plan`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ diet_meals: payload.diet_meals }),
+        }).catch(() => {});
+      }
       if (kind === "medicine") setTreatmentOpen(false);
       if (kind === "routine") setRoutineOpen(false);
       if (kind === "diet") setDietOpen(false);

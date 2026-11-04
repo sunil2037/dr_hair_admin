@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../_lib/backend";
+import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../_lib/backend";
 
 export async function GET(request: Request) {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;

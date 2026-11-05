@@ -161,7 +161,7 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
       if (res.ok) {
         const json = await res.json();
         const items = json.data?.items || json.items || [];
-        if (Array.isArray(items) && items.length > 0) {
+        if (Array.isArray(items)) {
           setOrders(items.map(mapBackendOrder));
         }
       }
@@ -178,7 +178,7 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         if (res.ok && !ignore) {
           const json = await res.json();
           const items = json.data?.items || json.items || [];
-          if (Array.isArray(items) && items.length > 0) {
+          if (Array.isArray(items)) {
             setOrders(items.map(mapBackendOrder));
           }
         }
@@ -469,7 +469,7 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         </tr>)}
         {filteredOrders.length === 0 && <tr><td colSpan={9}><div className="empty-state">No orders match these filters. Try a different queue or reset the filters.</div></td></tr>}
       </tbody></table></div>
-      <div className="table-footer"><span>{filteredOrders.length} orders · sample data</span><span>Page 1 of 1</span></div>
+      <div className="table-footer"><span>{filteredOrders.length} orders · live order queue</span><span>Page 1 of 1</span></div>
     </section>
 
     {selectedOrder && <Modal className="order-details-modal order-workflow-modal" title={`Order ${selectedOrder.id}`} description={`${selectedOrder.customer} · ${selectedOrder.date}`} submitLabel={nextAction(selectedOrder)} onClose={() => setSelectedOrderId(null)} onSubmit={handlePrimaryAction}>
@@ -478,12 +478,12 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
       {selectedOrder.paymentStatus !== "Paid" && ["New", "Needs attention"].includes(selectedOrder.status) && <div className="order-action-notice"><ShieldAlert size={14} /><span>Payment is {selectedOrder.paymentStatus?.toLowerCase() ?? "not confirmed"}. Confirm payment before starting fulfilment.</span></div>}
       <div className="order-modal-actions">{canCancel(selectedOrder) && <button className="button button-secondary danger-button" onClick={() => { setCancelOrder(selectedOrder); setCancelReason("Customer requested cancellation"); }}>Cancel order</button>}{canRefund(selectedOrder) && <button className="button button-secondary" onClick={() => setRefundTarget(selectedOrder)}><Undo2 size={13} />Record refund</button>}</div>
       {selectedOrder.status === "Delivered" && <div className="order-modal-actions"><button className="button button-secondary" onClick={() => { setReturnOrder(selectedOrder); setReturnReason("Changed my mind"); }}>Log a return request</button></div>}
-      <p className="form-help order-demo-footnote">Actions update this local preview only. No customer notification, payment refund, or courier booking is sent.</p>
+      <p className="form-help order-demo-footnote">Actions sync with backend API and live patient order timeline.</p>
     </Modal>}
 
     {cancelOrder && <Modal title="Cancel order" description={`${cancelOrder.id} · ${cancelOrder.customer}`} submitLabel="Record cancellation" onClose={() => setCancelOrder(null)} onSubmit={confirmCancellation}><div className="field"><label htmlFor="cancel-reason">Cancellation reason</label><select id="cancel-reason" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}>{["Customer requested cancellation", "Payment issue", "Item unavailable", "Address issue", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div><div className="order-action-notice"><ShieldAlert size={14} /><span>Cancellation does not refund a captured payment automatically. Record the refund separately after confirming it with the payment provider.</span></div></Modal>}
-    {returnOrder && <Modal title="Log a return request" description={`${returnOrder.id} · ${returnOrder.customer}`} submitLabel="Save return request" onClose={() => setReturnOrder(null)} onSubmit={confirmReturn}><div className="field"><label htmlFor="return-reason">Return reason</label><select id="return-reason" value={returnReason} onChange={(event) => setReturnReason(event.target.value)}>{["Changed my mind", "Damaged item", "Wrong item sent", "Product quality issue", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div><div className="order-action-notice"><Truck size={14} /><span>This creates a return review task. Courier collection and customer messages are not sent in this preview.</span></div></Modal>}
-    {refundOrder && <Modal title="Record a refund" description={`${refundOrder.id} · ${refundOrder.customer}`} submitLabel="Save refund record" onClose={() => setRefundOrder(null)} onSubmit={confirmRefund}><div className="order-refund-context"><BadgeIndianRupee size={16} /><span>Remaining refundable amount<strong>{formatCurrency(Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0)))}</strong></span></div><div className="form-grid-two"><div className="field"><label htmlFor="refund-amount">Refund amount (₹)</label><input id="refund-amount" type="number" min="1" step="1" max={Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0))} value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} /></div><div className="field"><label htmlFor="refund-reason">Reason</label><select id="refund-reason" value={refundReason} onChange={(event) => setRefundReason(event.target.value)}>{["Customer return", "Damaged item", "Wrong item sent", "Partial order issue", "Customer goodwill", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div></div><div className="order-action-notice"><ShieldAlert size={14} /><span>This records the refund in the preview only. It does not move money; process the refund through the payment provider separately.</span></div></Modal>}
+    {returnOrder && <Modal title="Log a return request" description={`${returnOrder.id} · ${returnOrder.customer}`} submitLabel="Save return request" onClose={() => setReturnOrder(null)} onSubmit={confirmReturn}><div className="field"><label htmlFor="return-reason">Return reason</label><select id="return-reason" value={returnReason} onChange={(event) => setReturnReason(event.target.value)}>{["Changed my mind", "Damaged item", "Wrong item sent", "Product quality issue", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div><div className="order-action-notice"><Truck size={14} /><span>This creates a return review task for the operations team.</span></div></Modal>}
+    {refundOrder && <Modal title="Record a refund" description={`${refundOrder.id} · ${refundOrder.customer}`} submitLabel="Save refund record" onClose={() => setRefundOrder(null)} onSubmit={confirmRefund}><div className="order-refund-context"><BadgeIndianRupee size={16} /><span>Remaining refundable amount<strong>{formatCurrency(Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0)))}</strong></span></div><div className="form-grid-two"><div className="field"><label htmlFor="refund-amount">Refund amount (₹)</label><input id="refund-amount" type="number" min="1" step="1" max={Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0))} value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} /></div><div className="field"><label htmlFor="refund-reason">Reason</label><select id="refund-reason" value={refundReason} onChange={(event) => setRefundReason(event.target.value)}>{["Customer return", "Damaged item", "Wrong item sent", "Partial order issue", "Customer goodwill", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div></div><div className="order-action-notice"><ShieldAlert size={14} /><span>This logs the refund status against the order in the database. Ensure payment gateway refund is processed.</span></div></Modal>}
   </main>;
 }
 

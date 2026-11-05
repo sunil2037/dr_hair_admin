@@ -40,15 +40,24 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
     : canManagePromotions), [canManageOrders, canManageProducts, canManagePromotions, permissions]);
 
   useEffect(() => {
-    if (coupons.some((coupon) => coupon.code === "FIRSTDR")) return;
-    const demoRule = initialCoupons.find((coupon) => coupon.code === "FIRSTDR");
-    if (demoRule) setCoupons((current) => current.some((coupon) => coupon.code === demoRule.code) ? current : [demoRule, ...current]);
-  }, [coupons, setCoupons]);
-
-  useEffect(() => {
     // Purge any legacy demo products from session storage
     setProducts((current) => current.filter((p) => !p.id.startsWith("PRD-10") && !p.id.startsWith("demo-")));
   }, [setProducts]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/admin/coupons", { cache: "no-store", signal: controller.signal })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const items = body?.data?.coupons || body?.data;
+        if (Array.isArray(items)) {
+          setCoupons(items);
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [setCoupons]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -134,7 +143,7 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
 
   return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
     <PageHeader eyebrow="Commerce · Product growth" title="Commerce" description="Manage your product catalog, sales, offers, and referral program." action={resolvedActiveTab === "products" ? <button className="button button-primary" onClick={() => setCreateProductOpen(true)}><Package size={14} />Add product</button> : undefined} />
-    <div className="notice commerce-note"><BarChart3 size={14} /><span>Sales, order and customer numbers are sample analytics. Changes made here stay in this browser preview until commerce APIs are connected.</span></div>
+    <div className="notice commerce-note"><BarChart3 size={14} /><span>Products, orders, and coupons are synchronized directly with the production API backend.</span></div>
     <div className="commerce-tabs" role="tablist" aria-label="Commerce sections">
       {availableTabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={resolvedActiveTab === id} className={`commerce-tab ${resolvedActiveTab === id ? "selected" : ""}`} onClick={() => selectTab(id)}><Icon size={15} />{label}{id === "products" && <span>{products.length}</span>}</button>)}
     </div>

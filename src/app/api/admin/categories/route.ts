@@ -18,3 +18,23 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  try {
+    const token = request.headers.get("authorization") || "";
+    const body = await request.json();
+    const upstream = await fetch(backendUrl("/api/v1/categories"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(token ? { Authorization: token } : {}),
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const data = await readJson(upstream);
+    return noStoreJson(data, upstream.status);
+  } catch (err) {
+    return noStoreJson({ status: "error", message: "Failed to create category" }, 500);
+  }
+}

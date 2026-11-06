@@ -48,6 +48,32 @@ const assessmentFields: { key: string; label: string }[] = [
 function messageFrom(result: unknown, fallback: string) {
   return result && typeof result === "object" && "message" in result && typeof result.message === "string" ? result.message : fallback;
 }
+function getStageImage(stageStr?: unknown): { src: string; label: string } | null {
+  if (!stageStr || typeof stageStr !== "string") return null;
+  const s = stageStr.toLowerCase();
+  if (s.includes("stage 1") || s.includes("stage1")) {
+    return { src: "/images/hair_assessment/stage_1.png", label: "Stage 1 — Minimal Hairline Thinning" };
+  }
+  if (s.includes("stage 2") || s.includes("stage2")) {
+    return { src: "/images/hair_assessment/stage_2.png", label: "Stage 2 — Receding Hairline & Temples" };
+  }
+  if (s.includes("stage 3") || s.includes("stage3")) {
+    return { src: "/images/hair_assessment/stage_3.png", label: "Stage 3 — Deep Frontal Receding & Crown Thinning" };
+  }
+  if (s.includes("stage 4") || s.includes("stage4")) {
+    return { src: "/images/hair_assessment/stage_4.png", label: "Stage 4 — Extensive Crown & Frontal Loss" };
+  }
+  if (s.includes("stage 5") || s.includes("stage5")) {
+    return { src: "/images/hair_assessment/stage_5.png", label: "Stage 5 — Advanced Follicular Miniaturization" };
+  }
+  if (s.includes("patchy") || s.includes("areata")) {
+    return { src: "/images/hair_assessment/patchy_loss.png", label: "Patchy Hair Loss (Alopecia Areata Pattern)" };
+  }
+  if (s.includes("shedding") || s.includes("telogen") || s.includes("fall")) {
+    return { src: "/images/hair_assessment/hair_fall.png", label: "Diffuse Hair Shedding / Fall" };
+  }
+  return null;
+}
 function displayValue(value: unknown) {
   if (Array.isArray(value)) return value.map((item) => String(item)).join(", ") || "Not provided";
   if (typeof value === "string" && value.trim()) return value;
@@ -580,6 +606,32 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
               <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{details.assessments[0]?.id === viewedAssessment.id ? "Latest submission" : "Assessment record"}</p><p className="mt-1 font-mono text-sm font-bold text-[#1A365D]">{viewedAssessment.reference_no || `Assessment ${viewedAssessment.id}`}</p></div>
               <div className="text-right"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Submitted</p><p className="mt-1 text-sm font-medium text-slate-700">{formatDate(viewedAssessment.created_at)}</p></div>
             </div>
+            {(() => {
+              const stageVal = viewedAssessment.hair_loss_stage || (viewedAssessment as Record<string, unknown>).stage || viewedAssessment.main_concern;
+              const stageInfo = getStageImage(stageVal);
+              if (!stageInfo) return null;
+              return (
+                <div className="mt-4 flex flex-col sm:flex-row items-center gap-4 rounded-2xl border border-teal-100 bg-[#F0FDF4]/60 p-4">
+                  <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-teal-200 bg-white p-1 shadow-sm">
+                    <Image src={stageInfo.src} alt={stageInfo.label} fill unoptimized className="object-contain" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-center sm:text-left">
+                    <span className="inline-block rounded-full bg-teal-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                      Hair Loss Stage Selected In App
+                    </span>
+                    <h4 className="mt-1 text-sm font-bold text-[#1A365D]">
+                      {displayValue(stageVal)}
+                    </h4>
+                    <p className="mt-0.5 text-xs font-medium text-slate-600">
+                      {stageInfo.label}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Illustration chosen by patient during the mobile hair screening assessment.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
             {assessmentAnswers.length > 0 ? <div className="mt-5 grid grid-cols-1 gap-x-6 lg:grid-cols-2">{assessmentAnswers.map(({ key, label }) => <div key={key} className="min-w-0 border-b border-slate-100 py-3"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1.5 break-words text-sm leading-5 text-slate-700">{displayValue(viewedAssessment[key])}</p></div>)}</div> : <EmptyState icon={<ClipboardList size={20} />} title="No assessment answers" detail="There are no answers saved on this assessment." />}
             {assessmentProfile.length > 0 && <details className="mt-4 rounded-xl border border-slate-100 bg-[#FAFBFD] px-4 py-3"><summary className="flex cursor-pointer list-none items-center justify-between text-xs font-semibold text-slate-600 [&::-webkit-details-marker]:hidden">Patient details captured with this submission<ChevronDown size={15} className="text-slate-400" /></summary><div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-3">{assessmentProfile.map(({ key, label }) => <IdentityValue key={key} label={label} value={displayValue(viewedAssessment[key])} />)}</div></details>}
             {(viewedAssessment.scalp_photos?.length ?? 0) > 0 && <div className="mt-5"><div className="mb-2.5 flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Scalp photos</h3><span className="rounded-full bg-teal-50 px-2.5 py-1 text-[10px] font-semibold text-teal-800">{viewedAssessment.scalp_photos?.length} images</span></div><div className="grid grid-cols-2 gap-3 lg:grid-cols-3">{viewedAssessment.scalp_photos?.map((photo, index) => {

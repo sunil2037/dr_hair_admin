@@ -177,6 +177,31 @@ export function ContentManagement({
   }, [canEdit, canUploadMedia, scope, setVideos]);
 
   const [isRefreshingVideos, setIsRefreshingVideos] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/admin/categories?type=video", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+        const list = Array.isArray(result?.data?.videos)
+          ? result.data.videos
+          : Array.isArray(result?.data)
+          ? result.data
+          : [];
+        if (list.length > 0) {
+          const names = list
+            .map((c: Record<string, unknown>) => String(c.name || "").trim())
+            .filter((n: string) => n.length > 0 && n.toLowerCase() !== "all" && n.toLowerCase() !== "all stories");
+          if (names.length > 0) {
+            setCategories(Array.from(new Set(names)));
+          }
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [setCategories]);
+
   const refreshVideos = async () => {
     setIsRefreshingVideos(true);
     try {
@@ -354,7 +379,7 @@ export function ContentManagement({
   };
 
   // Add New Category
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (!canEdit) return;
     const trimmed = newCategoryName.trim();
     if (!trimmed) {
@@ -365,13 +390,24 @@ export function ContentManagement({
       onToast("Category already exists.");
       return;
     }
+
+    try {
+      const response = await fetch("/api/admin/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed, type: "video" }),
+      });
+      if (response.ok) {
+        onToast(`Category "${trimmed}" saved to database and live in mobile app!`);
+      }
+    } catch (_) {}
+
     setCategories([...categories, trimmed]);
     setSelectedCategory(trimmed);
     setFormCategory(trimmed);
     setNewCategoryName("");
     setIsCategoryModalOpen(false);
     onAudit("added app content category", trimmed);
-    onToast(`Category "${trimmed}" added successfully!`);
   };
 
   // Open Create Modal

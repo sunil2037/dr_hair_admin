@@ -8,8 +8,10 @@ async function adminToken() {
 export async function GET(request: Request) {
   const token = await adminToken();
   const { searchParams } = new URL(request.url);
+  if (!searchParams.has("limit")) searchParams.set("limit", "100");
+  if (!searchParams.has("status")) searchParams.set("status", "all");
   const queryString = searchParams.toString();
-  const path = queryString ? `/api/v1/admin/products?${queryString}` : "/api/v1/admin/products";
+  const path = `/api/v1/admin/products?${queryString}`;
 
   try {
     const upstream = await fetch(backendUrl(path), {

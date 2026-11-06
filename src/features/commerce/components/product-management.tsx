@@ -1,7 +1,7 @@
 "use client";
 
 import { BarChart3, BadgePercent, Package, ShoppingBag } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSessionState } from "../../shared/lib/use-session-state";
 import { PageHeader } from "../../shared/components/ui";
 import { initialCoupons, initialProducts } from "../lib/demo-data";
@@ -55,9 +55,9 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
     return () => controller.abort();
   }, [setCoupons]);
 
-  useEffect(() => {
+  const refreshProducts = useCallback(() => {
     const controller = new AbortController();
-    fetch("/api/admin/products", { cache: "no-store", signal: controller.signal })
+    fetch("/api/admin/products?limit=100&status=all", { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) return;
@@ -127,6 +127,10 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
     return () => controller.abort();
   }, [setProducts]);
 
+  useEffect(() => {
+    return refreshProducts();
+  }, [refreshProducts]);
+
   const resolvedActiveTab = availableTabs.some((tab) => tab.id === activeTab) ? activeTab : availableTabs[0]?.id ?? "overview";
   const tabLabel = tabs.find((tab) => tab.id === resolvedActiveTab)?.label ?? "Overview";
   const selectTab = (tab: CommerceTab) => {
@@ -145,7 +149,7 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
     </div>
     <div key={activeTab} className="commerce-content" aria-label={`${tabLabel} section`}>
       {resolvedActiveTab === "overview" && <CommerceOverview products={products} coupons={coupons} onNavigate={selectTab} />}
-      {resolvedActiveTab === "products" && canManageProducts && <ProductsPanel products={products} onProductsChange={(updater) => { setProducts(updater); onAudit("updated product catalog", "Product records"); }} createProductOpen={createProductOpen} onCreateHandled={() => setCreateProductOpen(false)} onToast={onToast} />}
+      {resolvedActiveTab === "products" && canManageProducts && <ProductsPanel products={products} onProductsChange={(updater) => { setProducts(updater); onAudit("updated product catalog", "Product records"); }} createProductOpen={createProductOpen} onCreateHandled={() => setCreateProductOpen(false)} onToast={onToast} onRefresh={refreshProducts} />}
       {resolvedActiveTab === "orders" && canManageOrders && <OrdersPage globalSearch={globalSearch} onToast={onToast} onAudit={onAudit} canExport={permissions.includes("commerce.export")} />}
       {resolvedActiveTab === "coupons" && canManagePromotions && <CouponsPanel coupons={coupons} products={products} onCouponsChange={(updater) => { setCoupons(updater); onAudit("updated commerce promotions", "Coupon records"); }} onToast={onToast} />}
     </div>

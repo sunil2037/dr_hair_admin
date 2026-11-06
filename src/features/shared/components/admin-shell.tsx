@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { HeaderSearch } from "./header-search";
 import { visibleNavigation, type PanelFeatureAccess } from "../lib/permissions";
 import type { AdminPermissionId, PageKey, Role } from "../types";
 
@@ -124,8 +125,8 @@ export function AdminShell({
   const profileRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLDivElement>(null);
 
-  const nav = visibleNavigation(role, panelAccess, permissions).filter((item) => item.key !== "patients");
-  const preferredMobileKeys: PageKey[] = ["overview", "bookings", "tests"];
+  const nav = visibleNavigation(role, panelAccess, permissions);
+  const preferredMobileKeys: PageKey[] = ["overview", "patients", "bookings", "tests"];
   const mobilePrimaryNav = [
     ...preferredMobileKeys.map((key) => nav.find((item) => item.key === key)).filter((item) => item !== undefined),
     ...nav.filter((item) => !preferredMobileKeys.includes(item.key)),
@@ -183,6 +184,56 @@ export function AdminShell({
       .slice(0, 2)
       .toUpperCase()
     : "DH";
+
+  const defaultPageHeaders: Record<PageKey, { title: string; subtitle: string }> = {
+    overview: {
+      title: "Hi, " + greetingName + "!",
+      subtitle: "Let's take a look at your clinic activity today",
+    },
+    patients: {
+      title: "Patients & Assessments",
+      subtitle: "Scalp diagnostics, consultation history, and patient registry",
+    },
+    catalog: {
+      title: "Commerce & Products",
+      subtitle: "Manage medical hair catalog, pricing, SKUs, and inventory levels",
+    },
+    orders: {
+      title: "Orders & Fulfillment",
+      subtitle: "Track patient product purchases, prescription kits, and deliveries",
+    },
+    tests: {
+      title: "Hair Tests & Diagnostics",
+      subtitle: "Review AI scalp test submissions, image captures, and trichology reports",
+    },
+    bookings: {
+      title: "Appointments & Consultations",
+      subtitle: "Schedule, reassign, and track clinic consultations and doctor OPD visits",
+    },
+    content: {
+      title: "App Management & CMS",
+      subtitle: "Mobile app banners, clinic stories, home promotions, and content feeds",
+    },
+    team: {
+      title: "Admin Team & Access",
+      subtitle: "Manage clinic staff accounts, feature permissions, and role security",
+    },
+    activity: {
+      title: "Audit Log & Security",
+      subtitle: "System audit trail, security events, and administrative actions",
+    },
+    notifications: {
+      title: "Clinic Alerts & Notifications",
+      subtitle: "Live clinical notifications, emergency consults, and system alerts",
+    },
+  };
+
+  const pageHeader = defaultPageHeaders[page] || {
+    title: pageLabels[page] || "Dr. Hair Clinic",
+    subtitle: "Clinic administrative workspace",
+  };
+  const activeTitle = headerTitle || pageHeader.title;
+  const activeSubtitle = headerSubtitle || pageHeader.subtitle;
 
   // Navigation icon mapper
   const getNavIcon = (key: string, isActive: boolean) => {
@@ -294,16 +345,20 @@ export function AdminShell({
             <div className="flex min-w-0 items-center gap-3">
               {onHeaderBack && <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#1A365D]" onClick={onHeaderBack} aria-label="Go back"><ChevronLeft size={18} /></button>}
               <div className="min-w-0">
-                <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{headerTitle || "Hi, " + greetingName + "!"}</h1>
-                <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">{headerSubtitle || "Let's take a look at your clinic activity today"}</p>
+                <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{activeTitle}</h1>
+                <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">{activeSubtitle}</p>
               </div>
             </div>
 
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              {showSearch && <div className="hidden w-52 items-center gap-2.5 rounded-full border border-slate-200/80 bg-white px-4 py-2 focus-within:ring-2 focus-within:ring-[#1A365D] sm:flex md:w-64">
-                <Search size={14} className="shrink-0 text-slate-400" />
-                <input type="text" placeholder="Search patient records..." value={globalSearch} onChange={(event) => onSearchChange(event.target.value)} className="w-full border-0 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400" />
-              </div>}
+              {showSearch && (
+                <HeaderSearch
+                  page={page}
+                  globalSearch={globalSearch}
+                  onSearchChange={onSearchChange}
+                  onNavigate={onPageChange}
+                />
+              )}
 
               <div ref={notificationsRef} className="relative">
                 <button type="button" aria-label={"Notifications" + (unreadCount ? ", " + unreadCount + " unread" : "")} title="Notifications" onClick={() => setNotificationsOpen(!notificationsOpen)} className={[
@@ -341,13 +396,16 @@ export function AdminShell({
 
       {/* Rounded floating mobile dock. More sections expand upward without a sheet or backdrop. */}
       <div ref={mobileNavRef} className="fixed bottom-[calc(env(safe-area-inset-bottom)+12px)] left-1/2 z-40 w-[min(360px,calc(100vw-28px))] -translate-x-1/2 md:hidden">
-        {mobileMoreOpen && mobileMoreNav.length > 0 && <nav aria-label="More admin sections" className="absolute bottom-[calc(100%+10px)] right-0 grid w-[min(330px,calc(100vw-28px))] grid-cols-4 justify-items-center gap-2 rounded-[28px] bg-white/95 p-3 shadow-[0_8px_32px_rgba(26,54,93,0.16)] animate-in fade-in slide-in-from-bottom-2 duration-200">
+        {mobileMoreOpen && mobileMoreNav.length > 0 && <nav aria-label="More admin sections" className="absolute bottom-[calc(100%+10px)] right-0 grid w-[min(340px,calc(100vw-28px))] grid-cols-4 justify-items-center gap-1.5 rounded-[28px] bg-white/95 p-3 shadow-[0_8px_32px_rgba(26,54,93,0.16)] animate-in fade-in slide-in-from-bottom-2 duration-200">
           {mobileMoreNav.map((item) => {
             const isActive = page === item.key;
             return <button key={item.key} type="button" aria-label={item.label} title={item.label} aria-current={isActive ? "page" : undefined} onClick={() => { onPageChange(item.key); setMobileMoreOpen(false); }} className={[
-              "flex h-12 w-12 items-center justify-center rounded-full bg-transparent transition-colors",
-              isActive ? "text-[#0D9488]" : "text-slate-500 hover:text-[#1A365D]",
-            ].join(" ")}>{getNavIcon(item.key, isActive)}</button>;
+              "flex flex-col items-center justify-center p-2 rounded-2xl transition-colors gap-1 text-center w-full",
+              isActive ? "text-[#0D9488] bg-teal-50/80 font-bold" : "text-slate-500 hover:text-[#1A365D] hover:bg-slate-50",
+            ].join(" ")}>
+              {getNavIcon(item.key, isActive)}
+              <span className="text-[10px] leading-tight line-clamp-1 max-w-[56px] truncate">{item.label.split(" ")[0]}</span>
+            </button>;
           })}
         </nav>}
 

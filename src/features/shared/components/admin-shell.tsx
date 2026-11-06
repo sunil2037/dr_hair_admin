@@ -338,10 +338,10 @@ export function AdminShell({
       {/* Main workspace and responsive app bar. */}
       <div className="min-h-screen min-w-0 flex flex-col md:ml-[92px] lg:ml-[108px]">
         <header className={[
-          "sticky top-0 z-30 px-4 py-3 transition-[background-color,backdrop-filter] duration-200 sm:px-6 lg:px-8",
+          "sticky top-0 z-30 px-4 py-3 transition-[background-color,backdrop-filter] duration-200 sm:px-6 lg:px-8 xl:px-10",
           headerScrolled ? "bg-[#F7F9FC]/80 backdrop-blur-xl" : "bg-[#F7F9FC]",
         ].join(" ")}>
-          <div className="mx-auto flex w-full max-w-[1560px] 2xl:max-w-[1680px] items-center justify-between gap-3">
+          <div className="flex w-full max-w-[1920px] 2xl:max-w-[2160px] items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               {onHeaderBack && <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#1A365D]" onClick={onHeaderBack} aria-label="Go back"><ChevronLeft size={18} /></button>}
               <div className="min-w-0">
@@ -387,8 +387,8 @@ export function AdminShell({
           </div>
         </header>
 
-        <main className="w-full min-w-0 flex-1 px-4 py-5 pb-28 sm:px-6 lg:px-8 md:pb-8">
-          <div className="mx-auto w-full max-w-[1560px] 2xl:max-w-[1680px] min-w-0">
+        <main className="w-full min-w-0 flex-1 px-4 py-5 pb-28 sm:px-6 lg:px-8 xl:px-10 md:pb-8">
+          <div className="w-full max-w-[1920px] 2xl:max-w-[2160px] min-w-0">
             {children}
           </div>
         </main>

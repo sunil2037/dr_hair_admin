@@ -40,7 +40,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [imageUrl, setImageUrl] = useState("");
-  const [audience, setAudience] = useState<Audience>("Active patients");
+  const [audience, setAudience] = useState<Audience>("All app users");
   const [deepLink, setDeepLink] = useState<DeepLinkTarget>("clinic_appointment");
   const [productId, setProductId] = useState("prod-anti-dandruff-shampoo");
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");

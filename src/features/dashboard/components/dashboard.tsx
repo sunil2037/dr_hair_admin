@@ -211,8 +211,15 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   ];
   const largestQueue = Math.max(1, ...queueBars.map((item) => item.count));
   return <div className="page-wrap dashboard-bento w-full min-w-0">
-    <PageHeader eyebrow={isSuper ? "Super Admin · Clinical overview" : "Admin workspace"} title={`Welcome, ${userName}`} description="A current view of this clinic’s patient care, consultations, reports, and operations." />
-    <div className="notice mb-4 flex items-start gap-2.5"><Clock3 size={14} className="mt-0.5 shrink-0" /><span><strong>{serverSummary ? "Live workspace" : "Preview workspace"}</strong> · {serverSummary ? "Authoritative clinical metrics and patient directory loaded from Dr. Hair API." : "Patient totals and directory load from the admin API. Appointment, assessment, order, and report queues use sample records saved in this browser session."}</span></div>
+    <div className="notice mb-4 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-2">
+        <Clock3 size={14} className="shrink-0 text-[#0D9488]" />
+        <span><strong>{serverSummary ? "Live workspace" : "Preview workspace"}</strong> · {serverSummary ? "Authoritative clinical metrics and patient directory loaded from Dr. Hair API." : "Patient totals and directory load from the admin API. Queues use session data."}</span>
+      </div>
+      <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline-block">
+        {isSuper ? "Super Admin · Dr. Jai Bansal Clinic" : "Clinical Admin"}
+      </span>
+    </div>
     <section className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Overview metrics">
       <Kpi icon={<UsersRound size={16} />} label="Patient records" value={!permitted("patients.view") ? "—" : serverSummary?.patients?.total !== undefined ? String(serverSummary.patients.total) : registeredPatientsState === "ready" ? String(registeredPatientTotal) : registeredPatientsState === "loading" ? "…" : "—"} trend={permitted("patients.view") ? (serverSummary ? "Server count" : "Live directory") : "No access"} foot={permitted("patients.view") ? registeredPatientsState === "error" ? "directory unavailable" : "registered patients" : "patient access is off"} onClick={permitted("patients.view") ? () => onNavigate("patients", { anchor: "registered-patients" }) : undefined} />
       <Kpi icon={<ClipboardCheck size={16} />} label="Assessments to review" value={permitted("assessments.review") ? String(serverSummary?.assessments?.pending ?? reviewPatients.length) : "—"} trend={permitted("assessments.review") ? (serverSummary ? "Server queue" : "Current queue") : "No access"} foot={permitted("assessments.review") ? (serverSummary ? "Live assessments" : "Preview records") : "assessment access is off"} onClick={permitted("assessments.review") ? openReviewQueue : undefined} />
@@ -384,7 +391,7 @@ function SelectedDateAppointments({ bookings, date, onNavigate, onOpenAppointmen
   const isToday = localDateKey(date) === localDateKey(new Date());
   const title = isToday ? "Today’s appointments" : `Appointments · ${formatShortDate(date)}`;
 
-  return <article className="card overflow-hidden rounded-[28px] lg:col-span-7 xl:col-span-8" aria-live="polite" aria-label={title}>
+  return <article className="card overflow-hidden rounded-[28px] lg:col-span-7 xl:col-span-8 flex flex-col justify-between" aria-live="polite" aria-label={title}>
     <div className="section-row">
       <div>
         <span className="eyebrow">Selected date</span>
@@ -393,9 +400,29 @@ function SelectedDateAppointments({ bookings, date, onNavigate, onOpenAppointmen
       </div>
       <button type="button" className="button button-secondary button-small" onClick={onNavigate}>All bookings <ArrowRight size={13} /></button>
     </div>
-    {bookings.length ? <div className="grid gap-2 px-4 pb-4 sm:px-5 sm:pb-5 xl:grid-cols-2">
-      {bookings.map((booking) => <AppointmentPatientCard key={booking.id} booking={booking} onClick={() => onOpenAppointment(booking)} />)}
-    </div> : <div className="empty-state mx-4 mb-4 rounded-2xl bg-[#F7F9FC] sm:mx-5 sm:mb-5">No appointments are booked for this date.</div>}
+    {bookings.length ? (
+      <div className="grid gap-2.5 px-4 pb-4 sm:px-5 sm:pb-5 xl:grid-cols-2">
+        {bookings.map((booking) => <AppointmentPatientCard key={booking.id} booking={booking} onClick={() => onOpenAppointment(booking)} />)}
+      </div>
+    ) : (
+      <div className="flex flex-1 flex-col items-center justify-center p-6 sm:p-10 text-center m-4 sm:m-5 rounded-2xl bg-[#F7F9FC]/80 border border-slate-100">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#0D9488] shadow-sm mb-3">
+          <CalendarCheck2 size={22} />
+        </div>
+        <h3 className="text-sm font-bold text-[#1A365D]">No appointments for this date</h3>
+        <p className="mt-1 text-xs text-slate-500 max-w-sm">
+          No OPD consultations or scalp scans are scheduled for this day. You can view all clinic bookings or select another date on the calendar.
+        </p>
+        <button
+          type="button"
+          onClick={onNavigate}
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white text-[#1A365D] border border-slate-200 text-xs font-semibold hover:bg-slate-50 transition shadow-xs"
+        >
+          <span>View all bookings</span>
+          <ArrowRight size={13} />
+        </button>
+      </div>
+    )}
   </article>;
 }
 
@@ -440,8 +467,17 @@ function RegisteredPatients({ patients, totalCount, loadState, onOpenPatient }: 
     {loadState === "loading" ? <div className="empty-state">Loading registered patients…</div>
       : loadState === "error" ? <div className="empty-state">Patient directory is unavailable right now.</div>
       : patients.length ? <div className="table-wrap">
-      <table>
-        <thead><tr><th>Patient</th><th>Contact</th><th>Age / gender</th><th>City</th><th>Registered</th><th /></tr></thead>
+      <table className="w-full min-w-[700px]">
+        <thead>
+          <tr>
+            <th className="w-[28%]">Patient</th>
+            <th className="w-[24%]">Contact</th>
+            <th className="w-[16%]">Age / gender</th>
+            <th className="w-[14%]">City</th>
+            <th className="w-[14%]">Registered</th>
+            <th className="w-[4%]" />
+          </tr>
+        </thead>
         <tbody>{patients.map((patient) => <tr key={patient.id}>
           <td><button type="button" className="person text-left" onClick={() => onOpenPatient(patient.patientCode || patient.id)} aria-label={`Open ${patient.name} patient details`}><Avatar initials={patient.initials} /><span><span className="person-name block">{patient.name}</span><span className="person-sub block">{patient.patientCode || patient.id}</span></span></button></td>
           <td><span className="block">{patient.email || "No email"}</span><span className="person-sub block">{patient.phone || "No phone"}</span></td>

@@ -287,50 +287,56 @@ export function AdminShell({
       {/* Main workspace and responsive app bar. */}
       <div className="min-h-screen min-w-0 flex flex-col md:ml-[92px] lg:ml-[108px]">
         <header className={[
-          "sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-3 transition-[background-color,backdrop-filter] duration-200 sm:px-6 lg:px-8",
+          "sticky top-0 z-30 px-4 py-3 transition-[background-color,backdrop-filter] duration-200 sm:px-6 lg:px-8",
           headerScrolled ? "bg-[#F7F9FC]/80 backdrop-blur-xl" : "bg-[#F7F9FC]",
         ].join(" ")}>
-          <div className="flex min-w-0 items-center gap-3">
-            {onHeaderBack && <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#1A365D]" onClick={onHeaderBack} aria-label="Go back"><ChevronLeft size={18} /></button>}
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{headerTitle || "Hi, " + greetingName + "!"}</h1>
-              <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">{headerSubtitle || "Let's take a look at your clinic activity today"}</p>
+          <div className="mx-auto flex w-full max-w-[1560px] 2xl:max-w-[1680px] items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {onHeaderBack && <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#1A365D]" onClick={onHeaderBack} aria-label="Go back"><ChevronLeft size={18} /></button>}
+              <div className="min-w-0">
+                <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{headerTitle || "Hi, " + greetingName + "!"}</h1>
+                <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">{headerSubtitle || "Let's take a look at your clinic activity today"}</p>
+              </div>
             </div>
-          </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            {showSearch && <div className="hidden w-52 items-center gap-2.5 rounded-full border border-slate-200/80 bg-white px-4 py-2 focus-within:ring-2 focus-within:ring-[#1A365D] sm:flex md:w-64">
-              <Search size={14} className="shrink-0 text-slate-400" />
-              <input type="text" placeholder="Search patient records..." value={globalSearch} onChange={(event) => onSearchChange(event.target.value)} className="w-full border-0 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400" />
-            </div>}
-
-            <div ref={notificationsRef} className="relative">
-              <button type="button" aria-label={"Notifications" + (unreadCount ? ", " + unreadCount + " unread" : "")} title="Notifications" onClick={() => setNotificationsOpen(!notificationsOpen)} className={[
-                "relative flex h-10 w-10 items-center justify-center rounded-full transition-colors",
-                notificationsOpen || page === "notifications" ? "text-[#0D9488]" : "text-slate-600 hover:text-[#1A365D]",
-              ].join(" ")}>
-                <Bell size={19} strokeWidth={1.8} />
-                {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#0D9488] ring-2 ring-[#F7F9FC]" />}
-              </button>
-
-              {notificationsOpen && <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(340px,calc(100vw-24px))] rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2"><h3 className="text-sm font-bold text-[#1A365D]">Clinic Alerts</h3>{unreadCount > 0 && <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold text-[#0D9488]">{unreadCount} new</span>}</div>
-                  {unreadCount > 0 && <button type="button" onClick={markAllRead} className="text-[11px] font-semibold text-[#0D9488] hover:underline">Mark all read</button>}
-                </div>
-                <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto py-1">
-                  {notifications.map((notification) => <button key={notification.id} type="button" onClick={() => { if (notification.page) onPageChange(notification.page); setNotificationsOpen(false); }} className="w-full space-y-1 rounded-xl px-1.5 py-2.5 text-left hover:bg-slate-50">
-                    <span className="flex items-start justify-between gap-2"><span className="text-xs font-medium leading-snug text-slate-800">{notification.title}</span>{!notification.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#0D9488]" />}</span>
-                    <span className="block text-[10px] font-semibold text-slate-400">{notification.time}</span>
-                  </button>)}
-                </div>
-                <div className="border-t border-slate-100 pt-2"><button type="button" onClick={() => { onPageChange("notifications"); setNotificationsOpen(false); }} className="block w-full py-1.5 text-center text-xs font-bold text-[#1A365D] hover:text-[#0D9488]">View all notifications →</button></div>
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              {showSearch && <div className="hidden w-52 items-center gap-2.5 rounded-full border border-slate-200/80 bg-white px-4 py-2 focus-within:ring-2 focus-within:ring-[#1A365D] sm:flex md:w-64">
+                <Search size={14} className="shrink-0 text-slate-400" />
+                <input type="text" placeholder="Search patient records..." value={globalSearch} onChange={(event) => onSearchChange(event.target.value)} className="w-full border-0 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400" />
               </div>}
+
+              <div ref={notificationsRef} className="relative">
+                <button type="button" aria-label={"Notifications" + (unreadCount ? ", " + unreadCount + " unread" : "")} title="Notifications" onClick={() => setNotificationsOpen(!notificationsOpen)} className={[
+                  "relative flex h-10 w-10 items-center justify-center rounded-full transition-colors",
+                  notificationsOpen || page === "notifications" ? "text-[#0D9488]" : "text-slate-600 hover:text-[#1A365D]",
+                ].join(" ")}>
+                  <Bell size={19} strokeWidth={1.8} />
+                  {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#0D9488] ring-2 ring-[#F7F9FC]" />}
+                </button>
+
+                {notificationsOpen && <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(340px,calc(100vw-24px))] rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2"><h3 className="text-sm font-bold text-[#1A365D]">Clinic Alerts</h3>{unreadCount > 0 && <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold text-[#0D9488]">{unreadCount} new</span>}</div>
+                    {unreadCount > 0 && <button type="button" onClick={markAllRead} className="text-[11px] font-semibold text-[#0D9488] hover:underline">Mark all read</button>}
+                  </div>
+                  <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto py-1">
+                    {notifications.map((notification) => <button key={notification.id} type="button" onClick={() => { if (notification.page) onPageChange(notification.page); setNotificationsOpen(false); }} className="w-full space-y-1 rounded-xl px-1.5 py-2.5 text-left hover:bg-slate-50">
+                      <span className="flex items-start justify-between gap-2"><span className="text-xs font-medium leading-snug text-slate-800">{notification.title}</span>{!notification.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#0D9488]" />}</span>
+                      <span className="block text-[10px] font-semibold text-slate-400">{notification.time}</span>
+                    </button>)}
+                  </div>
+                  <div className="border-t border-slate-100 pt-2"><button type="button" onClick={() => { onPageChange("notifications"); setNotificationsOpen(false); }} className="block w-full py-1.5 text-center text-xs font-bold text-[#1A365D] hover:text-[#0D9488]">View all notifications →</button></div>
+                </div>}
+              </div>
             </div>
           </div>
         </header>
 
-        <main className="w-full min-w-0 flex-1 px-4 py-5 pb-28 sm:px-6 lg:px-8 md:pb-8">{children}</main>
+        <main className="w-full min-w-0 flex-1 px-4 py-5 pb-28 sm:px-6 lg:px-8 md:pb-8">
+          <div className="mx-auto w-full max-w-[1560px] 2xl:max-w-[1680px] min-w-0">
+            {children}
+          </div>
+        </main>
       </div>
 
       {/* Rounded floating mobile dock. More sections expand upward without a sheet or backdrop. */}
@@ -410,6 +416,24 @@ export function AdminShell({
                   </div>
                 </div>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" title="Connected" />
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 space-y-2">
+                <div className="text-[11px] font-bold text-[#1A365D]">Google Play &amp; App Store Links</div>
+                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#0D9488] hover:underline font-semibold flex items-center gap-1">
+                    Privacy Policy ↗
+                  </a>
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#0D9488] hover:underline font-semibold flex items-center gap-1">
+                    Terms &amp; Conditions ↗
+                  </a>
+                  <a href="/delete-account" target="_blank" rel="noopener noreferrer" className="text-[#0D9488] hover:underline font-semibold flex items-center gap-1">
+                    Delete Account ↗
+                  </a>
+                  <a href="/support" target="_blank" rel="noopener noreferrer" className="text-[#0D9488] hover:underline font-semibold flex items-center gap-1">
+                    Support &amp; Contact ↗
+                  </a>
+                </div>
               </div>
             </div>
 

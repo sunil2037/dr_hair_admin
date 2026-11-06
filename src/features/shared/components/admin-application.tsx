@@ -51,8 +51,15 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
   useEffect(() => {
     const syncRouteState = () => {
       const query = new URLSearchParams(window.location.search);
-      const requestedPage = query.get("panel") as PageKey | null;
-      setPage(initialPatientId ? "patients" : requestedPage && ["overview", "patients", "catalog", "content", "orders", "tests", "bookings", "team", "activity", "notifications"].includes(requestedPage) ? requestedPage : "overview");
+      const queryPanel = query.get("panel") as PageKey | null;
+      const pathSegment = window.location.pathname.replace(/^\/+/, "").split("/")[0] as PageKey;
+      const validKeys: PageKey[] = ["overview", "patients", "catalog", "content", "orders", "tests", "bookings", "team", "activity", "notifications"];
+      const resolvedPage = (queryPanel && validKeys.includes(queryPanel))
+        ? queryPanel
+        : (pathSegment && validKeys.includes(pathSegment))
+        ? pathSegment
+        : "overview";
+      setPage(initialPatientId ? "patients" : resolvedPage);
       setBookingDate(query.get("date") ?? "");
       setDashboardAnchor(window.location.hash.slice(1));
     };
@@ -99,7 +106,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
       setBookingDate("");
       const anchor = options?.anchor ?? "registered-patients";
       setDashboardAnchor(anchor);
-      router.push(`/?panel=overview#${anchor}`);
+      router.push(`/overview#${anchor}`);
       return;
     }
     setPage(nextPage);
@@ -107,9 +114,12 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
     setDashboardAnchor("");
     const selectedDate = nextPage === "bookings" ? options?.bookingDate ?? "" : "";
     setBookingDate(selectedDate);
-    const query = new URLSearchParams({ panel: nextPage });
-    if (selectedDate) query.set("date", selectedDate);
-    router.push(`/?${query.toString()}`);
+    const targetUrl = nextPage === "overview"
+      ? "/"
+      : selectedDate
+      ? `/${nextPage}?date=${encodeURIComponent(selectedDate)}`
+      : `/${nextPage}`;
+    router.push(targetUrl);
   }, [panelAccess, permissions, role, router, showToast]);
 
   const changePanelAccess = useCallback((id: string, enabled: boolean) => {

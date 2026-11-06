@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, CalendarClock, Link2, Send, Sparkles, X } from "lucide-react";
+import { BellRing, CalendarClock, ImageIcon, Link2, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StatusPill } from "../../shared/components/ui";
 
@@ -16,6 +16,7 @@ interface NotificationRecord {
   status: NotificationStatus;
   createdAt: string;
   scheduledAt?: string;
+  imageUrl?: string;
   destination?: {
     type: string;
     screen?: string;
@@ -38,6 +39,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
   const [records, setRecords] = useState<NotificationRecord[]>(initialNotifications);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [audience, setAudience] = useState<Audience>("Active patients");
   const [deepLink, setDeepLink] = useState<DeepLinkTarget>("clinic_appointment");
   const [productId, setProductId] = useState("prod-anti-dandruff-shampoo");
@@ -85,6 +87,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
               status,
               createdAt: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date((typeof item.created_at === "string" || typeof item.created_at === "number") ? item.created_at : Date.now())),
               scheduledAt: item.scheduledAt ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.scheduledAt as string)) : undefined,
+              imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : (typeof item.image_url === "string" ? item.image_url : undefined),
               destination: typeof item.destination === "string" ? item.destination : undefined,
             };
           });
@@ -114,15 +117,19 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
       ? { type: "product", entityId: productId.trim() }
       : { type: "screen", screen: deepLink };
 
+    const cleanImageUrl = imageUrl.trim();
+
     const payload = {
       title: cleanTitle,
       body: cleanMessage,
       audience,
+      imageUrl: cleanImageUrl || null,
       destination: destinationPayload,
       scheduled_at: scheduleMode === "later" ? new Date(scheduledAt).toISOString() : null,
       data: {
         destination_type: destinationPayload.type,
         ...(deepLink === "product" ? { entity_id: productId.trim() } : { screen: deepLink }),
+        ...(cleanImageUrl ? { image_url: cleanImageUrl, imageUrl: cleanImageUrl } : {}),
       },
     };
 
@@ -151,6 +158,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
         status: isScheduled ? "Scheduled" : "Sent",
         createdAt: "Just now",
         scheduledAt: isScheduled && scheduledAt ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(scheduledAt)) : undefined,
+        imageUrl: cleanImageUrl || undefined,
         destination: destinationPayload,
       };
 
@@ -165,6 +173,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
 
       setTitle("");
       setMessage("");
+      setImageUrl("");
       setScheduledAt("");
     } catch {
       onToast("Could not send notification. Please try again.");
@@ -230,6 +239,27 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
               />
               <small>{message.trim().length}/160 characters</small>
             </label>
+
+            <label className="field">
+              <span className="flex items-center gap-1.5"><ImageIcon size={13} /> Push Notification Image URL (Optional)</span>
+              <input
+                value={imageUrl}
+                onChange={(event) => setImageUrl(event.target.value)}
+                placeholder="https://... (e.g. Cloudinary image banner URL)"
+              />
+              <small>Attached to FCM rich push notification and shown on patient lock screen</small>
+            </label>
+            {imageUrl.trim() && (
+              <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 max-w-xs">
+                <p className="text-[10px] font-semibold text-slate-500 mb-1">Image preview:</p>
+                <img
+                  src={imageUrl.trim()}
+                  alt="Push notification preview"
+                  className="h-24 w-full rounded-lg object-cover border border-slate-200/80"
+                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="field">
@@ -338,6 +368,16 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
                     )}
                   </div>
                   <p className="mb-1 mt-1 text-[11px] leading-5 text-slate-500">{record.message}</p>
+                  {record.imageUrl && (
+                    <div className="mb-1.5 mt-1">
+                      <img
+                        src={record.imageUrl}
+                        alt="Notification attachment"
+                        className="h-16 w-28 rounded-lg border border-slate-200/80 object-cover shadow-xs"
+                        onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}
+                      />
+                    </div>
+                  )}
                   <div className="text-[10px] text-slate-400">
                     {record.audience} · {record.scheduledAt ?? record.createdAt}
                   </div>

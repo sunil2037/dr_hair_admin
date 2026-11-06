@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, LayoutGrid, Megaphone, RefreshCw, SlidersHorizontal, Video, type LucideIcon } from "lucide-react";
+import { BellRing, LayoutGrid, Megaphone, RefreshCw, ShieldCheck, SlidersHorizontal, Video, type LucideIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AdminPermissionId, FeatureRecord, Role } from "../../shared/types";
 import type { PanelFeatureAccess } from "../../shared/lib/permissions";
@@ -12,14 +12,16 @@ import { ContentManagement } from "../../content/components/content-management";
 import { FeatureControls } from "../../feature-controls/components/feature-controls";
 import { AppUpdatesPanel } from "./app-updates-panel";
 import { NotificationsPanel } from "./notifications-panel";
+import { StorePoliciesPanel } from "./store-policies-panel";
 
-type AppManagementTab = "content" | "home" | "notifications" | "updates" | "features";
+type AppManagementTab = "content" | "home" | "notifications" | "updates" | "features" | "policies";
 const tabMeta: { id: AppManagementTab; label: string; icon: LucideIcon; description: string }[] = [
   { id: "content", label: "Content & media", icon: Video, description: "Educational videos and approved patient stories." },
   { id: "home", label: "Home screen", icon: Megaphone, description: "Control banners, placements, and app destinations." },
   { id: "notifications", label: "Notifications", icon: BellRing, description: "Draft and schedule privacy-safe app messages." },
   { id: "updates", label: "App updates", icon: RefreshCw, description: "Manage Android and iOS release policies." },
   { id: "features", label: "Feature availability", icon: SlidersHorizontal, description: "Control app and admin-panel feature access." },
+  { id: "policies", label: "Play Store & Legal", icon: ShieldCheck, description: "Official Google Play & App Store links: Privacy Policy, Terms, Data Deletion, and Support." },
 ];
 
 export function AppManagement({
@@ -40,6 +42,7 @@ export function AppManagement({
   const availableTabs = useMemo(() => tabMeta.filter(({ id }) => {
     if (id === "content" || id === "home") return canManageContent;
     if (id === "notifications") return canManageNotifications;
+    if (id === "policies") return true;
     return role === "super-admin";
   }), [canManageContent, canManageNotifications, role]);
   const [activeTab, setActiveTab] = useState<AppManagementTab>(availableTabs[0]?.id ?? "content");
@@ -60,6 +63,7 @@ export function AppManagement({
       {resolvedTab === "notifications" && <NotificationsPanel onToast={onToast} onAudit={onAudit} />}
       {resolvedTab === "updates" && role === "super-admin" && <AppUpdatesPanel onToast={onToast} onAudit={onAudit} />}
       {resolvedTab === "features" && role === "super-admin" && <FeatureControls onToast={onToast} features={appFeatures} onFeaturesChange={onFeaturesChange} panelAccess={panelAccess} onPanelAccessChange={onPanelAccessChange} onAudit={onAudit} />}
+      {resolvedTab === "policies" && <StorePoliciesPanel onToast={onToast} />}
       {!resolvedTab && <div className="card empty-state">Your account does not have access to an App Management section.</div>}
     </section>
   </div>;

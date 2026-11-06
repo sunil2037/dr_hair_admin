@@ -393,7 +393,7 @@ function SelectedDateAppointments({ bookings, date, onNavigate, onOpenAppointmen
       </div>
       <button type="button" className="button button-secondary button-small" onClick={onNavigate}>All bookings <ArrowRight size={13} /></button>
     </div>
-    {bookings.length ? <div className="grid gap-2 px-4 pb-4 sm:px-5 sm:pb-5">
+    {bookings.length ? <div className="grid gap-2 px-4 pb-4 sm:px-5 sm:pb-5 xl:grid-cols-2">
       {bookings.map((booking) => <AppointmentPatientCard key={booking.id} booking={booking} onClick={() => onOpenAppointment(booking)} />)}
     </div> : <div className="empty-state mx-4 mb-4 rounded-2xl bg-[#F7F9FC] sm:mx-5 sm:mb-5">No appointments are booked for this date.</div>}
   </article>;

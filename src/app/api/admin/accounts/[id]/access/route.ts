@@ -5,7 +5,7 @@ async function adminToken() {
   return (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
 }
 
-export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+async function handleUpdate(request: Request, context: { params: Promise<{ id: string }> }) {
   const token = await adminToken();
   if (!token) return noStoreJson({ message: "Sign in as Super Admin to manage access." }, 401);
 
@@ -19,7 +19,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   try {
     const upstream = await fetch(backendUrl(`/api/v1/admin/accounts/${encodeURIComponent(id)}/access`), {
-      method: "PUT",
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
@@ -32,4 +32,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   } catch {
     return noStoreJson({ message: "Admin access could not be updated." }, 503);
   }
+}
+
+export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
+  return handleUpdate(request, context);
+}
+
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  return handleUpdate(request, context);
 }

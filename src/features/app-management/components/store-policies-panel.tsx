@@ -170,3 +170,4 @@ export function StorePoliciesPanel({ onToast }: { onToast: (message: string) => 
     </div>
   );
 }
+

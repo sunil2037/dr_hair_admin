@@ -10,6 +10,8 @@ export type AdminIdentity = {
   email: string;
   name?: string | null;
   role: "admin" | "super_admin";
+  roleTemplate?: string | null;
+  permissions?: string[] | null;
 };
 
 export function SignIn({ onAuthenticated }: { onAuthenticated: (admin: AdminIdentity) => void }) {

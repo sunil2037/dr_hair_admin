@@ -44,7 +44,13 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
   const showToast = useCallback((message: string) => setToast(message), []);
   const closeToast = useCallback(() => setToast(""), []);
   const isOwner = false;
-  const permissions = useMemo<AdminPermissionId[]>(() => role === "super-admin" ? superAdminPermissions : ["patients.view"], [role]);
+  const permissions = useMemo<AdminPermissionId[]>(() => {
+    if (role === "super-admin") return superAdminPermissions;
+    if (Array.isArray(auth.admin?.permissions) && auth.admin.permissions.length > 0) {
+      return auth.admin.permissions as AdminPermissionId[];
+    }
+    return ["patients.view"];
+  }, [auth.admin?.permissions, role]);
   const visibleName = auth.admin?.name || actorEmail || "Admin";
   const actorName = visibleName;
 

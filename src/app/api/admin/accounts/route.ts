@@ -29,9 +29,26 @@ export async function POST(request: Request) {
   } catch {
     return noStoreJson({ message: "Enter the admin name and work email." }, 400);
   }
-  const data = body && typeof body === "object" ? body as { name?: unknown; email?: unknown } : {};
+  const data = body && typeof body === "object" ? body as Record<string, unknown> : {};
   if (typeof data.name !== "string" || typeof data.email !== "string") {
     return noStoreJson({ message: "Enter the admin name and work email." }, 400);
+  }
+
+  const payload: Record<string, unknown> = {
+    name: data.name,
+    email: data.email,
+  };
+  if (typeof data.password === "string" && data.password.trim().length > 0) {
+    payload.password = data.password.trim();
+  }
+  if (typeof data.roleTemplate === "string") {
+    payload.roleTemplate = data.roleTemplate;
+  }
+  if (Array.isArray(data.permissions)) {
+    payload.permissions = data.permissions;
+  }
+  if (data.permissionOverrides && typeof data.permissionOverrides === "object") {
+    payload.permissionOverrides = data.permissionOverrides;
   }
 
   try {
@@ -42,7 +59,7 @@ export async function POST(request: Request) {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ name: data.name, email: data.email }),
+      body: JSON.stringify(payload),
       cache: "no-store",
     });
     return noStoreJson(await readJson(upstream), upstream.status);

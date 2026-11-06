@@ -47,7 +47,7 @@ export function AppManagement({
   const resolvedTab = availableTabs.some((tab) => tab.id === activeTab) ? activeTab : availableTabs[0]?.id;
 
   const selectedMeta = tabMeta.find((tab) => tab.id === resolvedTab);
-  return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+  return <div className="page-wrap w-full min-w-0">
     <PageHeader eyebrow="Dr. Hair · App experience" title="App Management" description="Manage what patients see, receive, and need to access the Dr. Hair app." />
     <div className="notice mb-4"><LayoutGrid size={14} /><span>Video uploads, YouTube links, and video publishing are connected to the backend. Banners, patient stories, notifications, feature settings, and app update policies still use local previews until their APIs are connected.</span></div>
     <div className="commerce-tabs app-management-tabs" role="tablist" aria-label="App management sections">
@@ -62,5 +62,5 @@ export function AppManagement({
       {resolvedTab === "features" && role === "super-admin" && <FeatureControls onToast={onToast} features={appFeatures} onFeaturesChange={onFeaturesChange} panelAccess={panelAccess} onPanelAccessChange={onPanelAccessChange} onAudit={onAudit} />}
       {!resolvedTab && <div className="card empty-state">Your account does not have access to an App Management section.</div>}
     </section>
-  </main>;
+  </div>;
 }

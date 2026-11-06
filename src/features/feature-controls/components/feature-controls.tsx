@@ -1,14 +1,19 @@
 "use client";
 
-import { Activity, AlertCircle, CheckCircle2, CircleHelp, ClipboardCheck, FileCheck2, FileText, HeartPulse, Home, LockKeyhole, Package, ShoppingBag, Star, UsersRound, Video } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertCircle, BellRing, CalendarDays, CheckCircle2, ClipboardCheck, FileCheck2, FileText, Home, LockKeyhole, Package, ShoppingBag, Star, UsersRound, Video } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { FeatureRecord } from "../../shared/types";
 import { Modal, ToggleSwitch } from "../../shared/components/ui";
 
 const iconFor: Record<string, React.ComponentType<{ size?: number }>> = {
-  home: Home, assessment: ClipboardCheck, treatment: HeartPulse, shop: ShoppingBag,
-  reviews: Star, videos: Video, routine: CheckCircle2, progress: Activity, reports: FileCheck2,
-  reminders: CircleHelp,
+  shop: ShoppingBag,
+  clinic_appointment: CalendarDays,
+  assessment: ClipboardCheck,
+  videos: Video,
+  reviews: Star,
+  routine: CheckCircle2,
+  reminders: BellRing,
+  reports: FileCheck2,
 };
 const panelModules = [
   { id: "patients", title: "Patients & assessments", description: "Patient profiles, assessment review, and treatment history.", enabled: true, admins: "Individual access in Admin users" },
@@ -34,6 +39,36 @@ export function FeatureControls({
   const panelState = panelModules.map((item) => ({ ...item, enabled: panelAccess[item.id] ?? item.enabled }));
   const grouped = useMemo(() => features.reduce<Record<string, FeatureRecord[]>>((acc, feature) => { (acc[feature.group] ??= []).push(feature); return acc; }, {}), [features]);
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/admin/features", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        if (!active || !payload?.data?.items) return;
+        const liveItems: Array<{ key: string; title?: string; description?: string; group?: string; enabled?: boolean; updatedBy?: string }> = payload.data.items;
+        if (!Array.isArray(liveItems) || !liveItems.length) return;
+
+        const liveKeyMap = new Map(liveItems.map((item) => [item.key, item]));
+        onFeaturesChange(
+          features.map((feature) => {
+            const live = liveKeyMap.get(feature.id);
+            if (!live) return feature;
+            return {
+              ...feature,
+              title: live.title || feature.title,
+              description: live.description || feature.description,
+              group: live.group || feature.group,
+              enabled: typeof live.enabled === "boolean" ? live.enabled : feature.enabled,
+            };
+          })
+        );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const commitToggle = async () => {
     if (!target) return;
     const newEnabled = !target.enabled;
@@ -57,7 +92,7 @@ export function FeatureControls({
   };
 
   return <section className="space-y-4">
-    <div className="notice"><AlertCircle size={14} /><span>These are global on/off controls. Choose which individual admins can use enabled sections from Admin users → Edit access. Changes stay in this browser preview until configuration APIs are connected.</span></div>
+    <div className="notice"><AlertCircle size={14} /><span>These are live global feature flags. Toggling a feature updates the mobile app configuration immediately, controlling what sections, buttons, and care flows are active for patients.</span></div>
     <div style={{ display: "flex", gap: 8, borderBottom: "1px solid var(--line)", margin: "17px 0 12px" }}>
       <button className={`filter-button ${tab === "app" ? "selected" : ""}`} style={tab === "app" ? { borderColor: "#c7e2dd", color: "var(--teal)", background: "#f3faf8" } : { borderColor: "transparent" }} onClick={() => setTab("app")}><Home size={13} />App features</button>
       <button className={`filter-button ${tab === "panel" ? "selected" : ""}`} style={tab === "panel" ? { borderColor: "#c7e2dd", color: "var(--teal)", background: "#f3faf8" } : { borderColor: "transparent" }} onClick={() => setTab("panel")}><LockKeyhole size={13} />Admin panel access</button>

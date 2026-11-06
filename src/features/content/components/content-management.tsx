@@ -769,7 +769,7 @@ export function ContentManagement({
   };
 
   return (
-    <div className={embedded ? "app-management-embedded" : "page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8"}>
+    <div className={embedded ? "app-management-embedded" : "page-wrap w-full min-w-0"}>
       {!embedded && <PageHeader
         eyebrow={mode === "content" ? "App Experience & Media" : "Catalog Media"}
         title={mode === "content" ? "App Content & Media Manager" : "Product Media Manager"}

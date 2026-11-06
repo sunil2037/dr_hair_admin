@@ -20,7 +20,7 @@ const periodLabels: Record<CommercePeriod, string[]> = {
 export function CommerceOverview({ products, coupons, onNavigate }: {
   products: ProductRecord[];
   coupons: CouponRecord[];
-  onNavigate: (tab: "overview" | "products" | "coupons" | "referrals") => void;
+  onNavigate: (tab: "overview" | "products" | "coupons") => void;
 }) {
   const [period, setPeriod] = useState<CommercePeriod>("month");
   const metrics = commercePeriodMetrics[period];
@@ -53,7 +53,7 @@ export function CommerceOverview({ products, coupons, onNavigate }: {
       <div className="section-row"><div><h2 className="card-title">Product revenue & margin</h2><p className="card-note">See which products drive sales and how much each contributes</p></div><button className="text-action" onClick={() => onNavigate("products")}>Manage catalog <ArrowRight size={13} /></button></div>
       <div className="table-wrap"><table className="commerce-table"><thead><tr><th>Product</th><th>Units sold</th><th>Net sales</th><th>Gross profit</th><th>Margin</th><th>Inventory</th></tr></thead><tbody>{topProducts.map((product) => { const profit = (product.price - product.unitCost) * product.unitsSold; const margin = product.price > 0 ? ((product.price - product.unitCost) / product.price) * 100 : 0; return <tr key={product.id}><td><div className="person"><span className="activity-icon"><Box size={14} /></span><div><div className="person-name">{product.name}</div><div className="person-sub">{product.sku}</div></div></div></td><td>{product.unitsSold.toLocaleString("en-IN")}</td><td><strong>{formatCurrency(product.revenue)}</strong></td><td>{formatCurrency(profit)}</td><td><span className="margin-pill">{margin.toFixed(0)}%</span></td><td>{product.stock === 0 ? <span className="stock-low">Out of stock</span> : product.stock <= 10 ? <span className="stock-low">{product.stock} left</span> : `${product.stock} units`}</td></tr>; })}</tbody></table></div>
     </section>
-    <section className="commerce-quick-links"><div className="commerce-quick-copy"><span className="commerce-quick-icon"><Sparkles size={17} /></span><div><strong>Grow your store</strong><span>Create a product offer or invite customers to earn referral rewards.</span></div></div><div className="commerce-quick-actions"><button className="button button-secondary" onClick={() => onNavigate("coupons")}><BadgePercent size={14} />Create a coupon</button><button className="button button-secondary" onClick={() => onNavigate("referrals")}><ArrowRight size={14} />Manage referrals</button></div></section>
+    <section className="commerce-quick-links"><div className="commerce-quick-copy"><span className="commerce-quick-icon"><Sparkles size={17} /></span><div><strong>Grow your store</strong><span>Create a product offer or manage your catalog items.</span></div></div><div className="commerce-quick-actions"><button className="button button-secondary" onClick={() => onNavigate("coupons")}><BadgePercent size={14} />Create a coupon</button><button className="button button-secondary" onClick={() => onNavigate("products")}><ArrowRight size={14} />View products</button></div></section>
     {coupons.length === 0 && <div className="empty-state">Create your first coupon to start tracking offer performance.</div>}
     <span className="sr-only">{metrics.margin}% average product margin</span>
   </>;

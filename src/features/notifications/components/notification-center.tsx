@@ -176,7 +176,7 @@ export function NotificationCenter({
     else onNavigate(item.page);
   };
 
-  return <main className="page-wrap mx-auto w-full min-w-0 max-w-[1420px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+  return <div className="page-wrap w-full min-w-0">
     <PageHeader
       eyebrow="Clinic updates"
       title="Notifications"
@@ -244,7 +244,7 @@ export function NotificationCenter({
         <p className="mt-1 text-xs text-slate-500">New items will appear here when the connected clinic services send them.</p>
       </div>}
     </section>
-  </main>;
+  </div>;
 }
 
 function NotificationSummary({ label, value, icon, tone }: { label: string; value: number; icon: React.ReactNode; tone: "teal" | "blue" | "amber" }) {

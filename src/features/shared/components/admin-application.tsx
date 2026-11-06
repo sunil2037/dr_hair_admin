@@ -151,7 +151,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
 }
 
 function Denied() {
-  return <main className="page-wrap"><section className="card empty-state">Super Admin access is required for this section.</section></main>;
+  return <div className="page-wrap w-full min-w-0"><section className="card empty-state">Super Admin access is required for this section.</section></div>;
 }
 
 function AdminSessionSkeleton() {
@@ -170,11 +170,11 @@ function AdminSessionSkeleton() {
       </div>
     </aside>
     <section className="min-h-screen min-w-0 md:ml-[92px] lg:ml-[108px]" aria-hidden="true">
-      <header className="flex h-[68px] items-center justify-between bg-[#F7F9FC]/90 px-4 sm:px-8">
+      <header className="flex h-[68px] items-center justify-between bg-[#F7F9FC]/90 px-4 sm:px-6 lg:px-8">
         <div className="space-y-2"><div className="h-5 w-32 animate-pulse rounded bg-slate-200" /><div className="h-3 w-56 animate-pulse rounded bg-slate-100" /></div>
         <div className="flex items-center gap-3"><div className="hidden h-10 w-52 animate-pulse rounded-full bg-white sm:block" /><div className="h-10 w-10 animate-pulse rounded-full bg-slate-200" /></div>
       </header>
-      <div className="mx-auto max-w-[1460px] space-y-5 px-4 py-6 pb-28 sm:px-8 md:pb-8">
+      <div className="w-full min-w-0 space-y-5 px-4 py-5 pb-28 sm:px-6 lg:px-8 md:pb-8">
         <div className="h-40 animate-pulse rounded-[28px] border border-slate-200 bg-white" />
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.4fr_1fr]"><div className="h-80 animate-pulse rounded-[28px] border border-slate-200 bg-white" /><div className="h-80 animate-pulse rounded-[28px] border border-slate-200 bg-white" /></div>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <div key={index} className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" />)}</div>

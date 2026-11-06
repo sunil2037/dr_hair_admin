@@ -89,7 +89,7 @@ export function AdminAccountManagement() {
   }
 
   return (
-    <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="page-wrap w-full min-w-0">
       <PageHeader eyebrow="Management · Super Admin" title="Admin accounts" description="Create staff logins and share each generated password privately." />
 
       <div className="notice mb-4 rounded-2xl">
@@ -139,6 +139,6 @@ export function AdminAccountManagement() {
           {!loading && accounts.length === 0 && <div className="empty-state">{error ? "Account list could not be loaded." : "No admin accounts are configured."}</div>}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

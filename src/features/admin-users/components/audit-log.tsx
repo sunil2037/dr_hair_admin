@@ -273,7 +273,7 @@ export function AuditLog({
   };
 
   return (
-    <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="page-wrap w-full min-w-0">
       <PageHeader
         eyebrow="Management · Super Admin"
         title="Audit log & User accounts"
@@ -688,6 +688,6 @@ export function AuditLog({
           </div>
         </Modal>
       )}
-    </main>
+    </div>
   );
 }

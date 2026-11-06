@@ -560,7 +560,7 @@ function CareOperationsPage({
   };
 
   return (
-    <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="page-wrap w-full min-w-0">
       <PageHeader
         eyebrow={config.eyebrow}
         title={config.title}
@@ -1171,7 +1171,7 @@ function CareOperationsPage({
           </div>
         </Modal>
       )}
-    </main>
+    </div>
   );
 }
 
@@ -1200,7 +1200,7 @@ function PatientDirectory({
   onRetry: () => void;
   onOpenPatient: (id: string) => void;
 }) {
-  return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+  return <div className="page-wrap w-full min-w-0">
     <PageHeader
       eyebrow="Patient Directory"
       title="Registered users"
@@ -1236,7 +1236,7 @@ function PatientDirectory({
         </div>
       </div>
     </section>
-  </main>;
+  </div>;
 }
 
 function PatientSummary({ patients, profiles, clinicalAccess }: { patients: PatientRecord[]; profiles: Record<string, typeof patientClinicalProfiles[string]>; clinicalAccess: boolean }) {

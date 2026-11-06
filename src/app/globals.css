@@ -108,7 +108,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .notification-dot { position: absolute; top: 7px; right: 7px; width: 6px; height: 6px; border: 1px solid #fff; border-radius: 50%; background: var(--teal); }
 .role-select { height: 36px; border: 1px solid #d9e4eb; border-radius: 8px; background: #f8fbfc; padding: 0 10px; color: var(--navy); font-size: 11px; font-weight: 700; }
 .role-demo { display: flex; align-items: center; gap: 7px; color: #8190a0; font-size: 10px; }
-.page-wrap { width: min(1420px, 100%); margin: 0 auto; padding: 30px 34px 44px; animation: page-in .24s ease both; }
+.page-wrap { width: 100%; max-width: 100%; min-width: 0; margin: 0; padding: 0 0 32px; animation: page-in .24s ease both; }
 @keyframes page-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 .eyebrow { margin: 0 0 7px; color: var(--teal); font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
@@ -607,7 +607,7 @@ tbody tr:hover { background: #fbfcfd; }
   .sidebar { width: 226px; }
   .main-column { margin-left: 226px; }
   .topbar { padding: 0 24px; }
-  .page-wrap { padding: 26px 24px 38px; }
+  .page-wrap { padding: 0 0 28px; }
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .commerce-overview-grid { grid-template-columns: 1fr; }
@@ -658,7 +658,7 @@ tbody tr:hover { background: #fbfcfd; }
   .search-box:focus-within { position: absolute; right: 110px; left: 60px; z-index: 2; width: auto; border-color: var(--line); }
   .search-box input { min-width: 0; }
   .breadcrumbs { font-size: 11px; }
-  .page-wrap { padding: 22px 15px 32px; }
+  .page-wrap { padding: 0 0 20px; }
   .page-head { flex-direction: column; margin-bottom: 18px; }
   .head-actions { width: 100%; }
   .head-actions .button { flex: 1; }
@@ -996,7 +996,6 @@ tbody tr:hover { background: #fbfcfd; }
   .topbar-actions .search-box:focus-within { right: clamp(163px, 50vw, 187px); left: 54px; width: auto; }
   .role-select, .admin-preview-select { width: clamp(68px, 22vw, 84px); max-width: clamp(68px, 22vw, 84px); min-width: 0; height: 36px; padding-right: 3px; padding-left: 5px; font-size: 9px; }
   .breadcrumbs strong { max-width: clamp(52px, 20vw, 80px); }
-  .page-wrap { padding-right: 15px; padding-left: 15px; }
   .page-head { gap: 12px; }
   .page-subtitle { max-width: 68ch; }
   .card-head, .section-row { min-width: 0; }
@@ -1062,7 +1061,6 @@ tbody tr:hover { background: #fbfcfd; }
   .role-select, .admin-preview-select { width: clamp(64px, 22vw, 76px); max-width: clamp(64px, 22vw, 76px); padding-left: 3px; font-size: 8px; }
   .breadcrumbs { gap: 3px; font-size: 10px; }
   .breadcrumbs strong { max-width: clamp(46px, 18vw, 68px); }
-  .page-wrap { padding-right: 12px; padding-left: 12px; }
   .kpi-value { font-size: clamp(18px, 6vw, 22px); }
   .kpi-card { padding: 10px; }
   .modal-backdrop { padding-right: 7px; padding-left: 7px; }

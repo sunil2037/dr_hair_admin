@@ -1,26 +1,24 @@
 "use client";
 
-import { BarChart3, BadgePercent, Package, Share2, ShoppingBag } from "lucide-react";
+import { BarChart3, BadgePercent, Package, ShoppingBag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSessionState } from "../../shared/lib/use-session-state";
 import { PageHeader } from "../../shared/components/ui";
-import { initialCoupons, initialProducts, initialReferrals } from "../lib/demo-data";
-import type { CouponRecord, ProductRecord, ProductStatus, ReferralRecord, ProductBenefit, ProductIngredient, ProductUsageStep, ProductClinicalClaim } from "../types";
+import { initialCoupons, initialProducts } from "../lib/demo-data";
+import type { CouponRecord, ProductRecord, ProductStatus, ProductBenefit, ProductIngredient, ProductUsageStep, ProductClinicalClaim } from "../types";
 import { CouponsPanel } from "./coupons-panel";
 import { CommerceOverview } from "./commerce-overview";
 import { ProductsPanel } from "./products-panel";
-import { ReferralsPanel } from "./referrals-panel";
 import { OrdersPage } from "../../operations/components/orders-page";
 import type { AdminPermissionId } from "../../shared/types";
 import type { PanelFeatureAccess } from "../../shared/lib/permissions";
 
-type CommerceTab = "overview" | "products" | "orders" | "coupons" | "referrals";
+type CommerceTab = "overview" | "products" | "orders" | "coupons";
 const tabs: { id: CommerceTab; label: string; icon: typeof BarChart3 }[] = [
   { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "products", label: "Products", icon: Package },
   { id: "orders", label: "Orders", icon: ShoppingBag },
   { id: "coupons", label: "Coupons", icon: BadgePercent },
-  { id: "referrals", label: "Referrals", icon: Share2 },
 ];
 
 export function ProductManagement({ onToast, permissions, panelAccess, globalSearch, onAudit }: { onToast: (message: string) => void; permissions: AdminPermissionId[]; panelAccess: PanelFeatureAccess; globalSearch: string; onAudit: (action: string, target: string) => void }) {
@@ -28,8 +26,6 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
   const [createProductOpen, setCreateProductOpen] = useState(false);
   const [products, setProducts] = useSessionState<ProductRecord[]>("drhair-commerce-products", initialProducts);
   const [coupons, setCoupons] = useSessionState<CouponRecord[]>("drhair-commerce-coupons", initialCoupons);
-  const [referrals, setReferrals] = useSessionState<ReferralRecord[]>("drhair-commerce-referrals", initialReferrals);
-  const [referralEnabled, setReferralEnabled] = useSessionState("drhair-commerce-referral-enabled", true);
   const canManageProducts = permissions.includes("products.manage") && panelAccess.catalog !== false;
   const canManageOrders = permissions.includes("orders.manage") && panelAccess.orders !== false;
   const canManagePromotions = permissions.includes("promotions.manage") && panelAccess.catalog !== false;
@@ -141,7 +137,7 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
     setActiveTab(tab);
   };
 
-  return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+  return <div className="page-wrap w-full min-w-0">
     <PageHeader eyebrow="Commerce · Product growth" title="Commerce" description="Manage your product catalog, sales, offers, and referral program." action={resolvedActiveTab === "products" ? <button className="button button-primary" onClick={() => setCreateProductOpen(true)}><Package size={14} />Add product</button> : undefined} />
     <div className="notice commerce-note"><BarChart3 size={14} /><span>Products, orders, and coupons are synchronized directly with the production API backend.</span></div>
     <div className="commerce-tabs" role="tablist" aria-label="Commerce sections">
@@ -152,7 +148,6 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
       {resolvedActiveTab === "products" && canManageProducts && <ProductsPanel products={products} onProductsChange={(updater) => { setProducts(updater); onAudit("updated product catalog", "Product records"); }} createProductOpen={createProductOpen} onCreateHandled={() => setCreateProductOpen(false)} onToast={onToast} />}
       {resolvedActiveTab === "orders" && canManageOrders && <OrdersPage globalSearch={globalSearch} onToast={onToast} onAudit={onAudit} canExport={permissions.includes("commerce.export")} />}
       {resolvedActiveTab === "coupons" && canManagePromotions && <CouponsPanel coupons={coupons} products={products} onCouponsChange={(updater) => { setCoupons(updater); onAudit("updated commerce promotions", "Coupon records"); }} onToast={onToast} />}
-      {resolvedActiveTab === "referrals" && canManagePromotions && <ReferralsPanel referrals={referrals} enabled={referralEnabled} onEnabledChange={(enabled) => { setReferralEnabled(enabled); onAudit(enabled ? "enabled referral program" : "paused referral program", "Referral settings"); }} onReferralsChange={(updater) => { setReferrals(updater); onAudit("updated commerce referrals", "Referral records"); }} onToast={onToast} canExport={permissions.includes("commerce.export")} />}
     </div>
-  </main>;
+  </div>;
 }

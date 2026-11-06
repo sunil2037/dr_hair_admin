@@ -47,32 +47,64 @@ export function HairTestsPage({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/admin/reports", { cache: "no-store", signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) return;
-        const body = await res.json().catch(() => ({}));
-        const items = body?.data?.reports;
-        if (Array.isArray(items) && items.length > 0) {
-          const mapped: HairTestRecord[] = items.map((r: Record<string, unknown>) => {
-            const patient = patients.find((p) => String(p.id) === String(r.userId));
-            return {
-              id: String(r.id),
-              patientId: String(r.userId),
-              patientName: patient?.name || `Patient #${r.userId}`,
-              testName: String(r.title || "Clinical Report"),
-              testDate: r.created_at ? new Date(String(r.created_at)).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-              fileName: String(r.file_name || "report.pdf"),
-              fileType: String(r.mime_type || "application/pdf"),
-              fileSize: Number(r.bytes) || 1024,
-              status: r.visibility === "Shared" ? "Shared" : "Approved",
-              createdAt: r.created_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(String(r.created_at))) : "Recently",
-              uploadedBy: String(r.uploaded_by || actor),
-            };
+    Promise.all([
+      fetch("/api/admin/hair-tests?limit=50", { cache: "no-store", signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null),
+      fetch("/api/admin/reports", { cache: "no-store", signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null),
+    ]).then(([testsRes, reportsRes]) => {
+      const combined: HairTestRecord[] = [];
+
+      const rawTests = testsRes?.data?.items || testsRes?.items;
+      if (Array.isArray(rawTests) && rawTests.length > 0) {
+        rawTests.forEach((t: Record<string, unknown>) => {
+          const patient = patients.find((p) => String(p.id) === String(t.userId));
+          const stage = String(t.hair_loss_stage || t.stage || t.main_concern || "Scalp screening");
+          const photoCount = Array.isArray(t.scalp_photos) ? t.scalp_photos.length : 0;
+          const status = String(t.status || "submitted").toLowerCase();
+          combined.push({
+            id: String(t.reference_no || t.id),
+            patientId: String(t.userId),
+            patientName: patient?.name || String(t.name || `Patient #${t.userId}`),
+            testName: `Hair assessment · ${stage}`,
+            testDate: t.created_at ? new Date(String(t.created_at)).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+            fileName: photoCount > 0 ? `${photoCount} scalp photos attached` : "Clinical questionnaire",
+            fileType: photoCount > 0 ? "image/jpeg" : "application/json",
+            fileSize: (photoCount || 1) * 2048,
+            status: status === "reviewed" ? "Approved" : status === "under_review" ? "In review" : "Draft",
+            createdAt: t.created_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(String(t.created_at))) : "Recently",
+            uploadedBy: "Patient via app",
           });
-          setRecords(mapped);
-        }
-      })
-      .catch(() => {});
+        });
+      }
+
+      const reportItems = reportsRes?.data?.reports;
+      if (Array.isArray(reportItems) && reportItems.length > 0) {
+        reportItems.forEach((r: Record<string, unknown>) => {
+          const patient = patients.find((p) => String(p.id) === String(r.userId));
+          combined.push({
+            id: String(r.id),
+            patientId: String(r.userId),
+            patientName: patient?.name || `Patient #${r.userId}`,
+            testName: String(r.title || "Clinical Report"),
+            testDate: r.created_at ? new Date(String(r.created_at)).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+            fileName: String(r.file_name || "report.pdf"),
+            fileType: String(r.mime_type || "application/pdf"),
+            fileSize: Number(r.bytes) || 1024,
+            status: r.visibility === "Shared" ? "Shared" : "Approved",
+            createdAt: r.created_at ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(String(r.created_at))) : "Recently",
+            uploadedBy: String(r.uploaded_by || actor),
+          });
+        });
+      }
+
+      if (combined.length > 0) {
+        setRecords(combined);
+      }
+    });
+
     return () => controller.abort();
   }, [patients, actor, setRecords]);
 
@@ -141,6 +173,15 @@ export function HairTestsPage({
       return;
     }
 
+    if (record.id.startsWith("HT-") || record.id.startsWith("TEST-")) {
+      const backendStatus = status === "In review" ? "under_review" : "reviewed";
+      fetch(`/api/admin/hair-tests/${encodeURIComponent(record.id)}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: backendStatus }),
+      }).catch(() => {});
+    }
+
     if (status === "Shared") {
       try {
         const res = await fetch(`/api/admin/users/${encodeURIComponent(record.patientId)}/reports/${encodeURIComponent(record.id)}/visibility`, {
@@ -179,9 +220,9 @@ export function HairTestsPage({
     }
   };
 
-  if (!canView) return <main className="page-wrap"><section className="card empty-state">You don’t have permission to view hair test records.</section></main>;
+  if (!canView) return <div className="page-wrap w-full min-w-0"><section className="card empty-state">You don’t have permission to view hair test records.</section></div>;
 
-  return <main className="page-wrap mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+  return <div className="page-wrap w-full min-w-0">
     <PageHeader eyebrow="Clinical workspace · Dr. Jai Bansal" title="Hair tests & reports" description="Keep patient test files in one review queue, then approve and share results when they are ready." />
     <div className="notice" style={{ marginBottom: 15 }}><FileCheck2 size={14} /><span>Upload verified clinical test reports (PDF or image). Approved reports shared with patients appear immediately in their Dr. Hair mobile app.</span></div>
     {canUpload && <form className="card hair-test-upload w-full" onSubmit={addFile}>
@@ -220,5 +261,5 @@ export function HairTestsPage({
       </tbody></table></div>
       <div className="table-footer"><span>Showing {filtered.length} of {records.length} test records</span><span>Stored in secure Cloudinary clinical storage</span></div>
     </section>
-  </main>;
+  </div>;
 }

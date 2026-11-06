@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Activity, CalendarDays, ChevronDown, ClipboardList, Copy, Download, Eye, EyeOff, FileCheck2, FileText, History, LoaderCircle, LockKeyhole, Mail, Pencil, Phone, Pill, Plus, RotateCcw, Search, Share2, ShieldCheck, Trash2, UploadCloud, UserRound, X } from "lucide-react";
 import type { Role } from "../../shared/types";
 import { Modal } from "../../shared/components/ui";
-import { CareArtwork, ImageChoice, careProductOptions, dietOptions, routineOptions } from "./patient-care-options";
+import { CareArtwork, ImageChoice, careProductOptions, dietOptions, routineOptions, type CareProductOption, type CareArt } from "./patient-care-options";
 import { FullSizeImageViewer, type ViewerImage } from "../../shared/components/full-size-image-viewer";
 
 type Patient = { id: number | string; patient_code?: string; name: string; email?: string; phone?: string; age?: number | null; gender?: string | null; city?: string | null; occupation?: string | null; profile_url?: string | null; platform?: string; created_at?: string; updated_at?: string };
@@ -135,7 +135,37 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
   const [reviewingCheckIn, setReviewingCheckIn] = useState<ProgressCheckIn | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [savingReview, setSavingReview] = useState(false);
+  const [liveProducts, setLiveProducts] = useState<CareProductOption[]>([]);
   const canWrite = role === "super-admin";
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/admin/products", { cache: "no-store", signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = await res.json().catch(() => ({}));
+        const items = json?.data?.items || json?.data || [];
+        if (Array.isArray(items) && items.length > 0) {
+          const mapped: CareProductOption[] = items.map((p: Record<string, unknown>) => {
+            const cat = String(p.category || p.type || "Topical").trim();
+            const name = String(p.name || p.title || "Product").trim();
+            const form = String(p.form || p.dosage_form || cat).trim();
+            const nameLower = name.toLowerCase();
+            const art: CareArt = nameLower.includes("shampoo") ? "shampoo" : nameLower.includes("supplement") || nameLower.includes("tablet") || nameLower.includes("capsule") ? "supplement" : nameLower.includes("roller") ? "roller" : nameLower.includes("conditioner") ? "conditioner" : "serum";
+            return {
+              id: String(p.id || p._id || p.sku || name),
+              name,
+              category: cat,
+              form,
+              art,
+            };
+          });
+          setLiveProducts(mapped);
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   const loadPatient = useCallback(async (signal?: AbortSignal) => {
     setLoadState("loading");
@@ -446,8 +476,8 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
     }
   };
 
-  if (loadState === "loading") return <main className="page-wrap mx-auto w-full max-w-[1420px] p-4 sm:p-6 lg:p-8"><div className="card flex min-h-64 items-center justify-center gap-3 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} />Loading patient record…</div></main>;
-  if (loadState === "error" || !details) return <main className="page-wrap mx-auto w-full max-w-[1420px] p-4 sm:p-6 lg:p-8"><div className="card border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800" role="alert">{error}<button className="button button-secondary ml-3" onClick={() => void loadPatient()}>Retry</button></div></main>;
+  if (loadState === "loading") return <div className="page-wrap w-full min-w-0"><div className="card flex min-h-64 items-center justify-center gap-3 text-sm text-slate-500"><LoaderCircle className="animate-spin" size={18} />Loading patient record…</div></div>;
+  if (loadState === "error" || !details) return <div className="page-wrap w-full min-w-0"><div className="card border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800" role="alert">{error}<button className="button button-secondary ml-3" onClick={() => void loadPatient()}>Retry</button></div></div>;
 
   const patient = details.patient;
   const patientCode = patient.patient_code || `DHP${String(patient.id).padStart(4, "0")}`;
@@ -459,18 +489,19 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
   const savedRoutineSteps = details.treatments.flatMap((treatment) => treatment.routine_steps ?? []);
   const savedDietMeals = details.treatments.flatMap((treatment) => treatment.diet_meals ?? []);
   const recentActivity = [...details.activity].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()).slice(0, 20);
-  const filteredMedicineOptions = careProductOptions.filter((option) => [option.name, option.category, option.form].join(" ").toLowerCase().includes(medicineSearch.trim().toLowerCase()));
+  const productOptions = liveProducts.length > 0 ? liveProducts : careProductOptions;
+  const filteredMedicineOptions = productOptions.filter((option) => [option.name, option.category, option.form].join(" ").toLowerCase().includes(medicineSearch.trim().toLowerCase()));
   const filteredRoutineOptions = routineOptions.filter((option) => [option.title, option.subtitle, option.category, option.time_of_day].join(" ").toLowerCase().includes(routineSearch.trim().toLowerCase()));
   const filteredDietOptions = dietOptions.filter((option) => [option.type, option.name, option.nutrients, option.benefit].join(" ").toLowerCase().includes(dietSearch.trim().toLowerCase()));
 
-  const toggleMedicine = (option: typeof careProductOptions[number]) => {
+  const toggleMedicine = (option: CareProductOption) => {
     setMedications((current) => current.some((medicine) => medicine.catalog_id === option.id)
       ? current.filter((medicine) => medicine.catalog_id !== option.id)
       : [...current, { catalog_id: option.id, name: option.name, category: option.category, form: option.form, dose: "", frequency: "", duration: "", instructions: "" }]);
   };
   const updateMedicine = (index: number, patch: Partial<Medication>) => setMedications((current) => current.map((medicine, itemIndex) => itemIndex === index ? { ...medicine, ...patch } : medicine));
 
-  return <main className="page-wrap mx-auto w-full max-w-[1420px] space-y-5 p-4 sm:p-6 lg:p-8">
+  return <div className="page-wrap w-full min-w-0 space-y-5">
     {!canWrite && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"><LockKeyhole size={15} className="mt-0.5 shrink-0" />This account can view patient records. A Super Admin can edit the profile, upload reports, and add care suggestions.</div>}
 
     <div className="grid min-w-0 grid-cols-1 items-start gap-5 md:grid-cols-[minmax(245px,0.82fr)_minmax(0,1.45fr)]">
@@ -603,32 +634,67 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
           </div>
           {viewedAssessment ? <>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F4F8FB] px-4 py-3.5">
-              <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{details.assessments[0]?.id === viewedAssessment.id ? "Latest submission" : "Assessment record"}</p><p className="mt-1 font-mono text-sm font-bold text-[#1A365D]">{viewedAssessment.reference_no || `Assessment ${viewedAssessment.id}`}</p></div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{details.assessments[0]?.id === viewedAssessment.id ? "Latest submission" : "Assessment record"}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <p className="font-mono text-sm font-bold text-[#1A365D]">{viewedAssessment.reference_no || `Assessment ${viewedAssessment.id}`}</p>
+                  {(() => {
+                    const status = String(viewedAssessment.status || (details.treatments.length ? "reviewed" : "submitted"));
+                    const isReviewed = status === "reviewed" || details.treatments.some((t) => t.reference_no === viewedAssessment.reference_no);
+                    const isUnderReview = status === "under_review";
+                    return (
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        isReviewed ? "bg-emerald-100 text-emerald-800" : isUnderReview ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"
+                      }`}>
+                        {isReviewed ? "Reviewed & Prescribed" : isUnderReview ? "Under Review" : "Awaiting Doctor Review"}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
               <div className="text-right"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Submitted</p><p className="mt-1 text-sm font-medium text-slate-700">{formatDate(viewedAssessment.created_at)}</p></div>
             </div>
             {(() => {
-              const stageVal = viewedAssessment.hair_loss_stage || (viewedAssessment as Record<string, unknown>).stage || viewedAssessment.main_concern;
+              const stageVal = String(viewedAssessment.hair_loss_stage || (viewedAssessment as Record<string, unknown>).stage || viewedAssessment.main_concern || "");
               const stageInfo = getStageImage(stageVal);
+              const isSevere = stageVal.toLowerCase().includes("stage 4") || stageVal.toLowerCase().includes("stage 5") || stageVal.toLowerCase().includes("patchy");
               if (!stageInfo) return null;
               return (
-                <div className="mt-4 flex flex-col sm:flex-row items-center gap-4 rounded-2xl border border-teal-100 bg-[#F0FDF4]/60 p-4">
-                  <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-teal-200 bg-white p-1 shadow-sm">
-                    <Image src={stageInfo.src} alt={stageInfo.label} fill unoptimized className="object-contain" />
+                <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-teal-100 bg-[#F0FDF4]/60 p-4">
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-teal-200 bg-white p-1 shadow-sm">
+                      <Image src={stageInfo.src} alt={stageInfo.label} fill unoptimized className="object-contain" />
+                    </div>
+                    <div className="min-w-0 flex-1 text-center sm:text-left">
+                      <span className="inline-block rounded-full bg-teal-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                        Hair Loss Stage Selected In App
+                      </span>
+                      <h4 className="mt-1 text-sm font-bold text-[#1A365D]">
+                        {displayValue(stageVal)}
+                      </h4>
+                      <p className="mt-0.5 text-xs font-medium text-slate-600">
+                        {stageInfo.label}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Illustration chosen by patient during the mobile hair screening assessment.
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1 text-center sm:text-left">
-                    <span className="inline-block rounded-full bg-teal-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-teal-800">
-                      Hair Loss Stage Selected In App
-                    </span>
-                    <h4 className="mt-1 text-sm font-bold text-[#1A365D]">
-                      {displayValue(stageVal)}
-                    </h4>
-                    <p className="mt-0.5 text-xs font-medium text-slate-600">
-                      {stageInfo.label}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Illustration chosen by patient during the mobile hair screening assessment.
-                    </p>
-                  </div>
+                  {isSevere ? (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50/80 px-3 py-2 text-xs text-blue-900">
+                      <p className="font-bold">Doctor Guidance · In-Person OPD Consultation Recommended</p>
+                      <p className="mt-0.5 text-[11px] text-blue-800">
+                        For advanced thinning (Stage 4/5) or patchy loss, in-person digital trichoscopy and clinical examination at Dr. Hair clinic is recommended. Patient app highlights in-clinic booking.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-teal-200 bg-white/80 px-3 py-2 text-xs text-teal-900">
+                      <p className="font-bold">Clinical Care Regimen Suggested</p>
+                      <p className="mt-0.5 text-[11px] text-teal-800">
+                        Patient has preliminary care kit enabled. Use &quot;Add medication&quot; below to review, approve, and send custom clinical instructions directly to the patient app.
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -789,7 +855,7 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
         <p className="mt-2 text-[11px] text-slate-400">This clinician note will be saved to the patient record and displayed in the patient timeline.</p>
       </Modal>
     )}
-  </main>;
+  </div>;
 }
 
 function SectionHeading({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) { return <div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#EFF7F8] text-teal-700">{icon}</span><div><h2 className="text-base font-bold text-[#1A365D]">{title}</h2><p className="mt-1 text-xs leading-5 text-slate-500">{subtitle}</p></div></div>; }

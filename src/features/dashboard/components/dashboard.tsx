@@ -55,16 +55,18 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   const [registeredPatients, setRegisteredPatients] = useState<RegisteredPatient[]>([]);
   const [registeredPatientTotal, setRegisteredPatientTotal] = useState(0);
   const [registeredPatientsState, setRegisteredPatientsState] = useState<"loading" | "ready" | "error">("loading");
+  const [liveBookings, setLiveBookings] = useState<BookingRecord[]>([]);
   const [orders] = useSessionState<OrderRecord[]>("drhair-demo-orders", initialOrders);
   const [profiles] = useSessionState<Record<string, PatientClinicalProfile>>("drhair-demo-patient-profiles", patientClinicalProfiles);
   const [hairTests] = useSessionState<HairTestRecord[]>("drhair-demo-hair-tests", initialHairTests);
   const [notifications] = useSessionState<PatientReportNotification[]>("drhair-demo-patient-notifications", []);
+  const effectiveBookings = liveBookings.length > 0 ? liveBookings : bookings;
   const reviewPatients = patients.filter((patient) => patient.status === "Review" || patient.status === "Pending");
   const today = new Date().toDateString();
   const todayKey = localDateKey(startOfToday());
-  const appointmentsToday = bookings.filter((booking) => (booking.startsAt ? new Date(booking.startsAt).toDateString() === today : booking.date.toLowerCase().includes("today")) && !["Cancelled", "No show"].includes(booking.status));
+  const appointmentsToday = effectiveBookings.filter((booking) => (booking.startsAt ? new Date(booking.startsAt).toDateString() === today : booking.date.toLowerCase().includes("today")) && !["Cancelled", "No show"].includes(booking.status));
   const selectedDateKey = localDateKey(selectedAppointmentDate);
-  const selectedDateAppointments = bookings
+  const selectedDateAppointments = effectiveBookings
     .filter((booking) => !["Cancelled", "No show"].includes(booking.status))
     .filter((booking) => {
       const date = appointmentDate(booking);
@@ -100,6 +102,40 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
       }
     };
     void loadSummary();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/admin/appointments", { cache: "no-store", signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const result = await res.json().catch(() => ({}));
+        const data = result?.data && typeof result.data === "object" ? result.data : {};
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (items.length > 0) {
+          setLiveBookings(items.map((item: Record<string, unknown>) => ({
+            id: String(item.id ?? ""),
+            customer: String(item.customer || item.name || "Patient"),
+            patientId: String(item.patientId || item.patient_code || item.userId || ""),
+            patientCode: typeof item.patient_code === "string" ? item.patient_code : undefined,
+            service: String(item.service || item.reason || "Clinic consultation"),
+            date: String(item.date || ""),
+            startsAt: typeof item.startsAt === "string" ? item.startsAt : (typeof item.starts_at === "string" ? item.starts_at : undefined),
+            status: (item.status || item.opdStatus || "Requested") as BookingRecord["status"],
+            source: (item.source || "App") as BookingRecord["source"],
+            doctorName: String(item.doctorName || item.doctor_name || "Dr. Jai Bansal"),
+            room: typeof item.room === "string" ? item.room : "Room 101 - Chamber A",
+            tokenNumber: typeof item.tokenNumber === "string" ? item.tokenNumber : (typeof item.opd_token === "string" ? item.opd_token : undefined),
+            opdStatus: (item.status || item.opdStatus || "Confirmed") as BookingRecord["opdStatus"],
+            consultationFee: typeof item.consultationFee === "number" ? item.consultationFee : (typeof item.consultation_fee === "number" ? item.consultation_fee : 500),
+            paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
+            paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
+            paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
+          })));
+        }
+      })
+      .catch(() => {});
     return () => controller.abort();
   }, []);
 
@@ -174,7 +210,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
     ...(permitted("orders.manage") ? [{ label: "Orders needing action", count: ordersToFulfil, tone: "amber" }] : []),
   ];
   const largestQueue = Math.max(1, ...queueBars.map((item) => item.count));
-  return <main className="page-wrap dashboard-bento mx-auto w-full max-w-[1420px] px-4 py-6 sm:px-6 lg:px-8">
+  return <div className="page-wrap dashboard-bento w-full min-w-0">
     <PageHeader eyebrow={isSuper ? "Super Admin · Clinical overview" : "Admin workspace"} title={`Welcome, ${userName}`} description="A current view of this clinic’s patient care, consultations, reports, and operations." />
     <div className="notice mb-4 flex items-start gap-2.5"><Clock3 size={14} className="mt-0.5 shrink-0" /><span><strong>{serverSummary ? "Live workspace" : "Preview workspace"}</strong> · {serverSummary ? "Authoritative clinical metrics and patient directory loaded from Dr. Hair API." : "Patient totals and directory load from the admin API. Appointment, assessment, order, and report queues use sample records saved in this browser session."}</span></div>
     <section className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Overview metrics">
@@ -237,7 +273,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
       onManage={() => { const date = appointmentDate(selectedBooking); setSelectedBooking(null); onNavigate("bookings", { bookingDate: date ? localDateKey(date) : undefined }); }}
     />}
 
-  </main>;
+  </div>;
 }
 
 function Kpi({ icon, label, value, trend, foot, onClick }: { icon: React.ReactNode; label: string; value: string; trend: string; foot: string; onClick?: () => void }) {
@@ -286,7 +322,7 @@ function AppointmentCalendar({ bookings, selectedDate, onSelectDate, clinicHolid
     onSelectDate(today);
   };
 
-  return <article className="min-w-0 overflow-hidden rounded-[28px] bg-[#1A365D] p-4 text-white shadow-sm sm:p-6 lg:col-span-5" aria-label="Appointment calendar">
+  return <article className="min-w-0 overflow-hidden rounded-[28px] bg-[#1A365D] p-4 text-white shadow-sm sm:p-6 lg:col-span-5 xl:col-span-4" aria-label="Appointment calendar">
     <div className="flex flex-col gap-2 border-b border-white/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <span className="text-[10px] font-bold uppercase tracking-[.16em] text-[#45c4b5]">OPD schedule</span>
@@ -348,7 +384,7 @@ function SelectedDateAppointments({ bookings, date, onNavigate, onOpenAppointmen
   const isToday = localDateKey(date) === localDateKey(new Date());
   const title = isToday ? "Today’s appointments" : `Appointments · ${formatShortDate(date)}`;
 
-  return <article className="card overflow-hidden rounded-[28px] lg:col-span-7" aria-live="polite" aria-label={title}>
+  return <article className="card overflow-hidden rounded-[28px] lg:col-span-7 xl:col-span-8" aria-live="polite" aria-label={title}>
     <div className="section-row">
       <div>
         <span className="eyebrow">Selected date</span>

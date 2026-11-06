@@ -18,17 +18,14 @@ export const admins: AdminRecord[] = [
 ];
 
 export const initialFeatures: FeatureRecord[] = [
-  { id: "home", title: "Home experience", description: "Home sections, hero banner, care prompts and featured content.", group: "App experience", enabled: true, admins: "Content & media editor" },
-  { id: "assessment", title: "Hair assessment", description: "Assessment questions, image capture and result journey.", group: "Clinical features", enabled: true, admins: "Clinical Admin" },
-  { id: "treatment", title: "Treatment plans", description: "Treatment guidance and assessment-linked care plans.", group: "Clinical features", enabled: true, admins: "Clinical Admin" },
-  { id: "reports", title: "Patient reports", description: "Private clinical reports and test results shared with a patient.", group: "Clinical features", enabled: true, admins: "Dr. Jai Bansal" },
-  { id: "shop", title: "Shop & checkout", description: "Product discovery, cart and checkout experience.", group: "Commerce", enabled: true, admins: "Operations Admin" },
-  { id: "reviews", title: "Reviews", description: "Customer feedback shown in the app.", group: "App experience", enabled: true, admins: "Content & media editor" },
-  { id: "videos", title: "Videos & stories", description: "Educational clips and clinician stories.", group: "App experience", enabled: true, admins: "Content & media editor" },
-  { id: "routine", title: "Routine tracker", description: "Daily routine tasks and adherence tracking.", group: "Care tools", enabled: true, admins: "Clinical Admin" },
-  { id: "progress", title: "Progress tracking", description: "Photo check-ins and progress history.", group: "Care tools", enabled: true, admins: "Clinical Admin" },
-  { id: "reminders", title: "Care reminders", description: "Dose and routine reminders.", group: "Care tools", enabled: true, admins: "Clinical Admin" },
-  { id: "clinic_appointment", title: "Physical clinic appointments", description: "Request an in-person visit with Dr. Jai Bansal.", group: "Care tools", enabled: true, admins: "Operations Admin" },
+  { id: "shop", title: "Pharmacy & Haircare Store", description: "Product catalog, cart, and checkout ordering in the patient app.", group: "Commerce", enabled: true, admins: "Operations Admin" },
+  { id: "clinic_appointment", title: "Clinic OPD Consultations", description: "In-person clinic consultation appointments with Dr. Jai Bansal.", group: "Clinical care", enabled: true, admins: "Operations Admin" },
+  { id: "assessment", title: "Hair Screening & Assessment", description: "Mobile hair assessment questionnaire and scalp photo analysis.", group: "Clinical care", enabled: true, admins: "Clinical Admin" },
+  { id: "videos", title: "Doctor Videos & Educational Reels", description: "Video reels feed and educational content for patients.", group: "Content & media", enabled: true, admins: "Content & media editor" },
+  { id: "reviews", title: "Patient Reviews & Stories", description: "Verified patient testimonials, transformation stories, and reviews tab.", group: "Content & media", enabled: true, admins: "Content & media editor" },
+  { id: "routine", title: "Daily Care Routine Tracker", description: "Morning & evening daily medication regimen checklist and habit tracking.", group: "Patient care tools", enabled: true, admins: "Clinical Admin" },
+  { id: "reminders", title: "Medication & Care Reminders", description: "Personalized alerts for minoxidil, serums, and supplements.", group: "Patient care tools", enabled: true, admins: "Clinical Admin" },
+  { id: "reports", title: "Clinical Reports & Test Vault", description: "Trichoscopy scans and clinical test PDF reports shared with the patient.", group: "Clinical care", enabled: true, admins: "Dr. Jai Bansal" },
 ];
 
 export const contentRecords: ContentRecord[] = [

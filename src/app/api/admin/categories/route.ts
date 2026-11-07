@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     });
     const data = await readJson(upstream);
     return noStoreJson(data, upstream.status);
-  } catch (err) {
+  } catch {
     return noStoreJson({ status: "error", message: "Failed to fetch categories" }, 500);
   }
 }
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     });
     const data = await readJson(upstream);
     return noStoreJson(data, upstream.status);
-  } catch (err) {
+  } catch {
     return noStoreJson({ status: "error", message: "Failed to create category" }, 500);
   }
 }

@@ -6,7 +6,6 @@ import {
   Calendar,
   ChevronRight,
   Command,
-  FileText,
   Flag,
   Gauge,
   LayoutDashboard,
@@ -16,8 +15,6 @@ import {
   Search,
   ShieldCheck,
   ShoppingBag,
-  Sparkles,
-  User,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -124,6 +121,7 @@ export function HeaderSearch({
 
   // Sync incoming globalSearch if updated externally
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalQuery(globalSearch);
   }, [globalSearch]);
 

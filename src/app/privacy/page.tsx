@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LegalShell } from "@/features/legal/components/legal-shell";
 import { Eye, ShieldCheck } from "lucide-react";
 
@@ -185,7 +186,7 @@ export default function PrivacyPolicyPage() {
             <strong>Right to Erase / Delete:</strong> Under Google Play and Apple App Store rules, you have the right to request deletion of your account and personal data at any time.
           </p>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-[#2E486D]">
-            Visit our dedicated <a href="/delete-account" className="font-bold underline text-[#0D9488]">Account &amp; Data Deletion Portal</a> to submit an instant deletion request, or email <a href="mailto:support@drhair.in" className="font-bold underline text-[#0D9488]">support@drhair.in</a> with your registered phone number.
+            Visit our dedicated <Link href="/delete-account" className="font-bold underline text-[#0D9488]">Account &amp; Data Deletion Portal</Link> to submit an instant deletion request, or email <a href="mailto:support@drhair.in" className="font-bold underline text-[#0D9488]">support@drhair.in</a> with your registered phone number.
           </div>
         </section>
 

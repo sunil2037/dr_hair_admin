@@ -11,7 +11,6 @@ import {
   ExternalLink,
   AlertTriangle,
   RefreshCw,
-  Search,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Avatar, PageHeader, TableToolbar, Modal } from "../../shared/components/ui";
@@ -144,6 +143,7 @@ export function AuditLog({
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAuditLogs();
     void loadUsers();
   }, []);

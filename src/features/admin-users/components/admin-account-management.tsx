@@ -12,7 +12,6 @@ import {
   Plus,
   RefreshCw,
   Settings2,
-  ShieldAlert,
   ShieldCheck,
   Trash2,
   UserCheck,
@@ -960,7 +959,7 @@ export function AdminAccountManagement() {
         >
           <div className="space-y-3">
             <p className="text-xs text-slate-600">
-              The new password must be at least 8 characters long. The staff member's previous password will stop working immediately.
+              The new password must be at least 8 characters long. The staff member&apos;s previous password will stop working immediately.
             </p>
             <div className="field">
               <label htmlFor="new-admin-password">New password</label>

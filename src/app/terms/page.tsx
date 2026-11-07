@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LegalShell } from "@/features/legal/components/legal-shell";
 import { HeartPulse } from "lucide-react";
 
@@ -47,7 +48,7 @@ export default function TermsAndConditionsPage() {
             These Terms of Service and End User License Agreement (&quot;Terms&quot; or &quot;EULA&quot;) constitute a legally binding agreement between you (&quot;User&quot;, &quot;Patient&quot;, or &quot;You&quot;) and <strong>Dr. Hair &amp; Cosmodent Clinic</strong> (&quot;Dr. Hair&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;), governing your download, access, and use of the Dr. Hair mobile application on iOS and Android, and our official clinical web services.
           </p>
           <p>
-            By downloading, installing, or tapping &quot;Get Started&quot; / &quot;Sign In&quot; in the App, you acknowledge that you have read, understood, and agreed to be bound by these Terms and our <a href="/privacy" className="text-[#0D9488] font-bold">Privacy Policy</a>. If you do not agree, do not install or use the App.
+            By downloading, installing, or tapping &quot;Get Started&quot; / &quot;Sign In&quot; in the App, you acknowledge that you have read, understood, and agreed to be bound by these Terms and our <Link href="/privacy" className="text-[#0D9488] font-bold">Privacy Policy</Link>. If you do not agree, do not install or use the App.
           </p>
         </section>
 
@@ -83,7 +84,7 @@ export default function TermsAndConditionsPage() {
           </p>
           <ul>
             <li><strong>Slot Availability:</strong> While we strive to honor scheduled appointment times, clinic emergencies or complex surgical procedures may occasionally result in short wait times.</li>
-            <li><strong>Rescheduling &amp; Cancellations:</strong> You may reschedule or cancel your appointment free of charge up to 2 hours prior to your slot via the App or by contacting clinic support. Refer to our <a href="/refund-policy" className="text-[#0D9488] font-bold">Refund Policy</a>.</li>
+            <li><strong>Rescheduling &amp; Cancellations:</strong> You may reschedule or cancel your appointment free of charge up to 2 hours prior to your slot via the App or by contacting clinic support. Refer to our <Link href="/refund-policy" className="text-[#0D9488] font-bold">Refund Policy</Link>.</li>
             <li><strong>Check-in Requirement:</strong> Patients are requested to arrive at least 10 minutes prior to their booked appointment for vitals and registration check-in.</li>
           </ul>
         </section>

@@ -105,6 +105,8 @@ export interface OrderRecord {
   customerPhone?: string;
   courier?: string;
   trackingNumber?: string;
+  shiprocketStatus?: string;
+  shiprocketShipmentId?: string;
   refundAmount?: number;
   refundReason?: string;
   cancellationReason?: string;

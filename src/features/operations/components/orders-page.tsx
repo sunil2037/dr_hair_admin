@@ -22,7 +22,7 @@ interface BackendOrder {
   pricing?: { total?: number; subtotal?: number; discount?: number; delivery_fee?: number; tax?: number; coupon_code?: string };
   shipping_address?: { name?: string; phone?: string; house_number?: string; street?: string; city?: string; state?: string; pincode?: string; formattedAddress?: string };
   payment?: { payment_status?: string; gateway?: string; refund_amount?: number; refund_id?: string };
-  fulfillment?: { status?: string; courier?: string; tracking_number?: string; cancellation_reason?: string; return_reason?: string };
+  fulfillment?: { status?: string; courier?: string; tracking_number?: string; shiprocket_status?: string; shiprocket_shipment_id?: string; cancellation_reason?: string; return_reason?: string };
   timeline?: Array<{ label?: string; timestamp?: string; done?: boolean }>;
   created_at?: string;
   date?: string;
@@ -54,6 +54,8 @@ function mapBackendOrder(apiOrder: BackendOrder): OrderRecord {
     couponCode: apiOrder.pricing?.coupon_code,
     courier: apiOrder.fulfillment?.courier || "",
     trackingNumber: apiOrder.fulfillment?.tracking_number || "",
+    shiprocketStatus: apiOrder.fulfillment?.shiprocket_status || "",
+    shiprocketShipmentId: apiOrder.fulfillment?.shiprocket_shipment_id || "",
     refundAmount: apiOrder.payment?.refund_amount ?? 0,
     refundReason: "",
     cancellationReason: apiOrder.fulfillment?.cancellation_reason || "",
@@ -132,7 +134,7 @@ function canRefund(order: OrderRecord) {
 }
 
 function canStartPreparing(order: OrderRecord) {
-  return (order.status === "New" || order.status === "Needs attention") && order.paymentStatus === "Paid";
+  return (order.status === "New" || order.status === "Needs attention") && (order.paymentStatus === "Paid" || order.paymentMethod === "Cash on Delivery");
 }
 
 export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExport = false }: { globalSearch: string; onToast: (message: string) => void; onAudit?: (action: string, target: string) => void; canExport?: boolean }) {
@@ -147,6 +149,7 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [dispatchByOrder, setDispatchByOrder] = useState<Record<string, { courier: string; trackingNumber: string }>>({});
+  const [shiprocketLoading, setShiprocketLoading] = useState(false);
   const [cancelOrder, setCancelOrder] = useState<OrderRecord | null>(null);
   const [cancelReason, setCancelReason] = useState("Customer requested cancellation");
   const [refundOrder, setRefundOrder] = useState<OrderRecord | null>(null);
@@ -233,6 +236,28 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
     updateOrder(order.id, (current) => ({ ...current, status: "Preparing", timeline: appendTimeline(current, "Fulfilment started · preparing order") }));
     onAudit("started fulfilment for", order.id);
     onToast(`${order.id} moved to Preparing.`);
+  };
+
+  const createShiprocketShipment = async (order: OrderRecord) => {
+    if (!order.shiprocketShipmentId && !window.confirm(`Create a Shiprocket shipment for ${order.id} and request a pickup? Shiprocket may charge your wallet.`)) return;
+    if (order.shiprocketShipmentId || order.shiprocketStatus === "needs_review" || order.shiprocketStatus === "processing") {
+      onToast("Check Shiprocket for this order before attempting another shipment.");
+      return;
+    }
+    setShiprocketLoading(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${encodeURIComponent(order.id)}/shiprocket`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.message || "Shiprocket shipment could not be created.");
+      await reloadOrders();
+      onAudit("created Shiprocket shipment for", order.id);
+      onToast(`${order.id} sent to Shiprocket. AWB: ${json.data?.fulfillment?.awb_code || json.data?.fulfillment?.tracking_number || "created"}.`);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Shiprocket shipment could not be created.");
+      await reloadOrders();
+    } finally {
+      setShiprocketLoading(false);
+    }
   };
 
   const handlePrimaryAction = async () => {
@@ -474,8 +499,8 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
 
     {selectedOrder && <Modal className="order-details-modal order-workflow-modal" title={`Order ${selectedOrder.id}`} description={`${selectedOrder.customer} · ${selectedOrder.date}`} submitLabel={nextAction(selectedOrder)} onClose={() => setSelectedOrderId(null)} onSubmit={handlePrimaryAction}>
       <OrderDetails order={selectedOrder} relatedOrders={normalizedOrders.filter((order) => order.customerEmail && order.customerEmail === selectedOrder.customerEmail && order.id !== selectedOrder.id).slice(0, 4)} />
-      {selectedOrder.status === "Preparing" && <div className="shipping-entry"><div className="field-heading"><Truck size={14} />Dispatch details</div><div className="form-grid-two"><div className="field"><label htmlFor="order-courier">Courier</label><input id="order-courier" value={dispatchDetails.courier} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, courier: event.target.value } }))} placeholder="e.g. Delhivery" /></div><div className="field"><label htmlFor="order-tracking">Tracking / AWB number</label><input id="order-tracking" value={dispatchDetails.trackingNumber} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, trackingNumber: event.target.value } }))} placeholder="Enter courier tracking number" /></div></div><p className="form-help">Both fields are required before recording dispatch.</p></div>}
-      {selectedOrder.paymentStatus !== "Paid" && ["New", "Needs attention"].includes(selectedOrder.status) && <div className="order-action-notice"><ShieldAlert size={14} /><span>Payment is {selectedOrder.paymentStatus?.toLowerCase() ?? "not confirmed"}. Confirm payment before starting fulfilment.</span></div>}
+      {selectedOrder.status === "Preparing" && <div className="shipping-entry"><div className="field-heading"><Truck size={14} />Dispatch details</div>{selectedOrder.shiprocketShipmentId ? <p className="form-help">Shiprocket shipment {selectedOrder.shiprocketShipmentId} · AWB {selectedOrder.trackingNumber || "pending"}</p> : selectedOrder.shiprocketStatus === "needs_review" || selectedOrder.shiprocketStatus === "processing" ? <div className="order-action-notice"><ShieldAlert size={14} /><span>Shiprocket request needs reconciliation in the Shiprocket panel before retrying.</span></div> : <button className="button button-secondary" type="button" disabled={shiprocketLoading} onClick={() => void createShiprocketShipment(selectedOrder)}><Truck size={13} />{shiprocketLoading ? "Creating Shiprocket shipment…" : "Create Shiprocket shipment & request pickup"}</button>}<div className="form-grid-two"><div className="field"><label htmlFor="order-courier">Courier</label><input id="order-courier" value={dispatchDetails.courier} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, courier: event.target.value } }))} placeholder="e.g. Delhivery" /></div><div className="field"><label htmlFor="order-tracking">Tracking / AWB number</label><input id="order-tracking" value={dispatchDetails.trackingNumber} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, trackingNumber: event.target.value } }))} placeholder="Enter courier tracking number" /></div></div><p className="form-help">Use Shiprocket to create a shipment and request pickup, or enter courier details manually.</p></div>}
+      {selectedOrder.paymentStatus !== "Paid" && selectedOrder.paymentMethod !== "Cash on Delivery" && ["New", "Needs attention"].includes(selectedOrder.status) && <div className="order-action-notice"><ShieldAlert size={14} /><span>Payment is {selectedOrder.paymentStatus?.toLowerCase() ?? "not confirmed"}. Confirm payment before starting fulfilment.</span></div>}
       <div className="order-modal-actions">{canCancel(selectedOrder) && <button className="button button-secondary danger-button" onClick={() => { setCancelOrder(selectedOrder); setCancelReason("Customer requested cancellation"); }}>Cancel order</button>}{canRefund(selectedOrder) && <button className="button button-secondary" onClick={() => setRefundTarget(selectedOrder)}><Undo2 size={13} />Record refund</button>}</div>
       {selectedOrder.status === "Delivered" && <div className="order-modal-actions"><button className="button button-secondary" onClick={() => { setReturnOrder(selectedOrder); setReturnReason("Changed my mind"); }}>Log a return request</button></div>}
       <p className="form-help order-demo-footnote">Actions sync with backend API and live patient order timeline.</p>

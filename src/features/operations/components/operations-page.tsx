@@ -29,6 +29,7 @@ import type { AdminPermissionId } from "../../shared/types";
 import { patientClinicalProfiles } from "../lib/patient-profiles";
 import { createFallbackProfile } from "./patient-profile-dialog";
 import { OrdersPage } from "./orders-page";
+import { AppointmentBillingControl } from "./appointment-billing-control";
 
 type CareOperationsKind = "patients" | "bookings";
 type TriageFilter = "all" | "needs-regimen" | "pending-checkins" | "active-regimen";
@@ -592,7 +593,16 @@ function CareOperationsPage({
         <span>Private patient workspace for Dr. Jai Bansal. Changes and report notices stay in this browser preview until secure APIs are connected.</span>
       </div>}
 
-      {isPatient ? <PatientSummary patients={patients} profiles={profiles} clinicalAccess={canViewClinicalPatients} /> : <BookingSummary bookings={bookings} />}
+      {isPatient ? (
+        <PatientSummary patients={patients} profiles={profiles} clinicalAccess={canViewClinicalPatients} />
+      ) : (
+        <>
+          <BookingSummary bookings={bookings} />
+          <div className="mt-4">
+            <AppointmentBillingControl onToast={onToast} onAudit={onAudit} />
+          </div>
+        </>
+      )}
 
       <section className="card operations-table-card mt-4">
         <div className="section-row flex flex-col sm:flex-row sm:items-center justify-between gap-3">

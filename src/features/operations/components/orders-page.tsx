@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, ArrowRight, BadgeIndianRupee, Boxes, Check, Download,
+  Activity, ArrowRight, BadgeIndianRupee, Boxes, Check, CreditCard, Download,
   Filter, MapPin, PackageCheck, ShieldAlert, Truck, Undo2, UserRound,
 } from "lucide-react";
 import { Avatar, Modal, PageHeader, StatusPill, TableToolbar } from "../../shared/components/ui";
 import { formatCurrency } from "../../commerce/lib/format";
 import { orders as initialOrders } from "../../shared/lib/demo-data";
 import type { OrderFulfillmentStatus, OrderPaymentStatus, OrderRecord } from "../../shared/types";
+import { ReceivedPaymentsPanel } from "./received-payments-panel";
 
 type QueueTab = "All orders" | "New" | "Preparing" | "Shipped" | "Needs attention" | "Returns" | "Delivered" | "Cancelled & refunded";
 type OrderDateFilter = "All dates" | "Last 7 days" | "Last 30 days";
@@ -138,6 +139,7 @@ function canStartPreparing(order: OrderRecord) {
 }
 
 export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExport = false }: { globalSearch: string; onToast: (message: string) => void; onAudit?: (action: string, target: string) => void; canExport?: boolean }) {
+  const [topTab, setTopTab] = useState<"orders" | "payments">("orders");
   const [orders, setOrders] = useState<OrderRecord[]>(initialOrders);
   const [tab, setTab] = useState<QueueTab>("All orders");
   const [query, setQuery] = useState("");
@@ -455,60 +457,93 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
   };
 
   return <div className="page-wrap w-full min-w-0">
-    <PageHeader eyebrow="Commerce · Fulfilment" title="Orders" description="Work through paid orders, shipping updates, and customer refund requests." action={canExport ? <button className="button button-secondary" onClick={exportCsv}><Download size={14} />Export filtered CSV</button> : undefined} />
-    <div className="notice operations-notice"><Activity size={14} /><span>Sample order records only. Status changes, refunds, and exports are local previews; payments, notifications, and courier updates require commerce APIs.</span></div>
+    <PageHeader eyebrow="Commerce · Fulfilment & Payments" title="Orders & Payments" description="Work through paid orders, shipping updates, customer refunds, and live Razorpay transactions." action={canExport && topTab === "orders" ? <button className="button button-secondary" onClick={exportCsv}><Download size={14} />Export filtered CSV</button> : undefined} />
 
-    <div className="kpi-grid order-queue-metrics grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <QueueMetric icon={<PackageCheck size={15} />} label="New · paid" value={String(normalizedOrders.filter((order) => order.status === "New" && order.paymentStatus === "Paid").length)} foot="Ready to begin fulfilment" tone="blue" />
-      <QueueMetric icon={<Boxes size={15} />} label="Preparing" value={String(counts.Preparing)} foot="Pack and assign dispatch" tone="violet" />
-      <QueueMetric icon={<Truck size={15} />} label="In transit" value={String(counts.Shipped)} foot="Orders with courier tracking" tone="teal" />
-      <QueueMetric icon={<ShieldAlert size={15} />} label="Needs attention" value={String(counts["Needs attention"])} foot="Resolve before fulfilment" tone="amber" />
+    <div className="flex items-center gap-2 mb-4 border-b border-slate-200">
+      <button
+        type="button"
+        className={`pb-2.5 px-3 text-sm font-semibold border-b-2 transition-colors ${
+          topTab === "orders"
+            ? "border-teal-700 text-teal-800"
+            : "border-transparent text-slate-500 hover:text-slate-800"
+        }`}
+        onClick={() => setTopTab("orders")}
+      >
+        Orders & Fulfilment
+      </button>
+      <button
+        type="button"
+        className={`pb-2.5 px-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
+          topTab === "payments"
+            ? "border-teal-700 text-teal-800"
+            : "border-transparent text-slate-500 hover:text-slate-800"
+        }`}
+        onClick={() => setTopTab("payments")}
+      >
+        <CreditCard size={14} />
+        Received Payments (Razorpay)
+      </button>
     </div>
 
-    <section className="card order-workspace-card">
-      <div className="order-workspace-heading"><div><h2 className="card-title">Fulfilment queue</h2><p className="card-note">Select a queue to focus the work that needs doing next.</p></div><span className="small-caption">{normalizedOrders.length} sample orders</span></div>
-      <div className="order-queue-tabs" role="tablist" aria-label="Filter orders by fulfilment status">{queueTabs.map((queue) => <button key={queue} role="tab" aria-selected={tab === queue} className={tab === queue ? "selected" : ""} onClick={() => setTab(queue)}>{queue}<span>{counts[queue]}</span></button>)}</div>
-      <TableToolbar value={query} onChange={setQuery} placeholder="Search order, customer, product, coupon, or tracking..." right={<>
-        <select className="period-select" aria-label="Filter by payment" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}><option>Any payment</option><option>Paid</option><option>Pending</option><option>Failed</option><option>Partially refunded</option><option>Refunded</option></select>
-        <select className="period-select" aria-label="Filter orders by date" value={dateFilter} onChange={(event) => changeDateFilter(event.target.value as OrderDateFilter)}><option>All dates</option><option>Last 7 days</option><option>Last 30 days</option></select>
-        <select className="period-select order-product-filter" aria-label="Filter by product" value={productFilter} onChange={(event) => setProductFilter(event.target.value)}><option>All products</option>{productOptions.map((product) => <option key={product}>{product}</option>)}</select>
-        <select className="period-select" aria-label="Filter by coupon" value={couponFilter} onChange={(event) => setCouponFilter(event.target.value)}><option>All coupons</option>{couponOptions.map((coupon) => <option key={coupon}>{coupon}</option>)}</select>
-        <button className="filter-button" onClick={clearFilters}><Filter size={13} />Reset</button>
-      </>} />
+    {topTab === "payments" ? (
+      <ReceivedPaymentsPanel onToast={onToast} />
+    ) : (
+      <>
+        <div className="notice operations-notice"><Activity size={14} /><span>Sample order records only. Status changes, refunds, and exports are local previews; payments, notifications, and courier updates require commerce APIs.</span></div>
 
-      {eligibleSelected.length > 0 && <div className="order-bulk-toolbar"><span><Check size={14} />{eligibleSelected.length} selected paid order{eligibleSelected.length === 1 ? "" : "s"} can start fulfilment</span><button className="button button-secondary button-small" onClick={moveSelectedToPreparing}>Move to preparing <ArrowRight size={13} /></button></div>}
+        <div className="kpi-grid order-queue-metrics grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <QueueMetric icon={<PackageCheck size={15} />} label="New · paid" value={String(normalizedOrders.filter((order) => order.status === "New" && order.paymentStatus === "Paid").length)} foot="Ready to begin fulfilment" tone="blue" />
+          <QueueMetric icon={<Boxes size={15} />} label="Preparing" value={String(counts.Preparing)} foot="Pack and assign dispatch" tone="violet" />
+          <QueueMetric icon={<Truck size={15} />} label="In transit" value={String(counts.Shipped)} foot="Orders with courier tracking" tone="teal" />
+          <QueueMetric icon={<ShieldAlert size={15} />} label="Needs attention" value={String(counts["Needs attention"])} foot="Resolve before fulfilment" tone="amber" />
+        </div>
 
-      <div className="table-wrap"><table className="orders-workflow-table"><thead><tr><th><input type="checkbox" aria-label="Select all paid orders ready for fulfilment" checked={allVisibleSelected} onChange={(event) => {
-        const eligible = new Set(selectableVisible);
-        setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...eligible])] : current.filter((id) => !eligible.has(id)));
-      }} /></th><th>Order</th><th>Customer</th><th>Placed</th><th>Total</th><th>Payment</th><th>Fulfilment</th><th>Next step</th><th /></tr></thead><tbody>
-        {filteredOrders.map((order) => <tr key={order.id}>
-          <td><input type="checkbox" aria-label={`Select order ${order.id}`} checked={selectedIds.includes(order.id)} disabled={!canStartPreparing(order)} onChange={(event) => toggleSelection(order.id, event.target.checked)} /></td>
-          <td><div className="person order-person"><span className="activity-icon"><PackageCheck size={14} /></span><div><div className="person-name">{order.id}</div><div className="person-sub">{order.item}{order.couponCode ? ` · ${order.couponCode}` : ""}</div></div></div></td>
-          <td><div className="order-customer-cell"><Avatar initials={order.customer.split(" ").map((part) => part[0]).join("")} /><span><strong>{order.customer}</strong><small>{order.customerEmail ?? "Email not recorded"}</small></span></div></td>
-          <td>{order.date}</td><td><strong>{formatCurrency(parseAmount(order))}</strong></td>
-          <td><div className="order-payment-cell"><StatusPill status={order.paymentStatus ?? "Pending"} />{order.paymentMethod && <small>{order.paymentMethod}</small>}</div></td>
-          <td><div className="order-fulfillment-cell"><StatusPill status={order.status} /><small>{progressFor(order)}</small></div></td>
-          <td><span className={`order-next-step ${order.status === "Needs attention" ? "attention" : ""}`}>{nextAction(order)}</span></td>
-          <td><button className="row-action" aria-label={`Open order ${order.id}`} onClick={() => setSelectedOrderId(order.id)}><ArrowRight size={15} /></button></td>
-        </tr>)}
-        {filteredOrders.length === 0 && <tr><td colSpan={9}><div className="empty-state">No orders match these filters. Try a different queue or reset the filters.</div></td></tr>}
-      </tbody></table></div>
-      <div className="table-footer"><span>{filteredOrders.length} orders · live order queue</span><span>Page 1 of 1</span></div>
-    </section>
+        <section className="card order-workspace-card">
+          <div className="order-workspace-heading"><div><h2 className="card-title">Fulfilment queue</h2><p className="card-note">Select a queue to focus the work that needs doing next.</p></div><span className="small-caption">{normalizedOrders.length} sample orders</span></div>
+          <div className="order-queue-tabs" role="tablist" aria-label="Filter orders by fulfilment status">{queueTabs.map((queue) => <button key={queue} role="tab" aria-selected={tab === queue} className={tab === queue ? "selected" : ""} onClick={() => setTab(queue)}>{queue}<span>{counts[queue]}</span></button>)}</div>
+          <TableToolbar value={query} onChange={setQuery} placeholder="Search order, customer, product, coupon, or tracking..." right={<>
+            <select className="period-select" aria-label="Filter by payment" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}><option>Any payment</option><option>Paid</option><option>Pending</option><option>Failed</option><option>Partially refunded</option><option>Refunded</option></select>
+            <select className="period-select" aria-label="Filter orders by date" value={dateFilter} onChange={(event) => changeDateFilter(event.target.value as OrderDateFilter)}><option>All dates</option><option>Last 7 days</option><option>Last 30 days</option></select>
+            <select className="period-select order-product-filter" aria-label="Filter by product" value={productFilter} onChange={(event) => setProductFilter(event.target.value)}><option>All products</option>{productOptions.map((product) => <option key={product}>{product}</option>)}</select>
+            <select className="period-select" aria-label="Filter by coupon" value={couponFilter} onChange={(event) => setCouponFilter(event.target.value)}><option>All coupons</option>{couponOptions.map((coupon) => <option key={coupon}>{coupon}</option>)}</select>
+            <button className="filter-button" onClick={clearFilters}><Filter size={13} />Reset</button>
+          </>} />
 
-    {selectedOrder && <Modal className="order-details-modal order-workflow-modal" title={`Order ${selectedOrder.id}`} description={`${selectedOrder.customer} · ${selectedOrder.date}`} submitLabel={nextAction(selectedOrder)} onClose={() => setSelectedOrderId(null)} onSubmit={handlePrimaryAction}>
-      <OrderDetails order={selectedOrder} relatedOrders={normalizedOrders.filter((order) => order.customerEmail && order.customerEmail === selectedOrder.customerEmail && order.id !== selectedOrder.id).slice(0, 4)} />
-      {selectedOrder.status === "Preparing" && <div className="shipping-entry"><div className="field-heading"><Truck size={14} />Dispatch details</div>{selectedOrder.shiprocketShipmentId ? <p className="form-help">Shiprocket shipment {selectedOrder.shiprocketShipmentId} · AWB {selectedOrder.trackingNumber || "pending"}</p> : selectedOrder.shiprocketStatus === "needs_review" || selectedOrder.shiprocketStatus === "processing" ? <div className="order-action-notice"><ShieldAlert size={14} /><span>Shiprocket request needs reconciliation in the Shiprocket panel before retrying.</span></div> : <button className="button button-secondary" type="button" disabled={shiprocketLoading} onClick={() => void createShiprocketShipment(selectedOrder)}><Truck size={13} />{shiprocketLoading ? "Creating Shiprocket shipment…" : "Create Shiprocket shipment & request pickup"}</button>}<div className="form-grid-two"><div className="field"><label htmlFor="order-courier">Courier</label><input id="order-courier" value={dispatchDetails.courier} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, courier: event.target.value } }))} placeholder="e.g. Delhivery" /></div><div className="field"><label htmlFor="order-tracking">Tracking / AWB number</label><input id="order-tracking" value={dispatchDetails.trackingNumber} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, trackingNumber: event.target.value } }))} placeholder="Enter courier tracking number" /></div></div><p className="form-help">Use Shiprocket to create a shipment and request pickup, or enter courier details manually.</p></div>}
-      {selectedOrder.paymentStatus !== "Paid" && selectedOrder.paymentMethod !== "Cash on Delivery" && ["New", "Needs attention"].includes(selectedOrder.status) && <div className="order-action-notice"><ShieldAlert size={14} /><span>Payment is {selectedOrder.paymentStatus?.toLowerCase() ?? "not confirmed"}. Confirm payment before starting fulfilment.</span></div>}
-      <div className="order-modal-actions">{canCancel(selectedOrder) && <button className="button button-secondary danger-button" onClick={() => { setCancelOrder(selectedOrder); setCancelReason("Customer requested cancellation"); }}>Cancel order</button>}{canRefund(selectedOrder) && <button className="button button-secondary" onClick={() => setRefundTarget(selectedOrder)}><Undo2 size={13} />Record refund</button>}</div>
-      {selectedOrder.status === "Delivered" && <div className="order-modal-actions"><button className="button button-secondary" onClick={() => { setReturnOrder(selectedOrder); setReturnReason("Changed my mind"); }}>Log a return request</button></div>}
-      <p className="form-help order-demo-footnote">Actions sync with backend API and live patient order timeline.</p>
-    </Modal>}
+          {eligibleSelected.length > 0 && <div className="order-bulk-toolbar"><span><Check size={14} />{eligibleSelected.length} selected paid order{eligibleSelected.length === 1 ? "" : "s"} can start fulfilment</span><button className="button button-secondary button-small" onClick={moveSelectedToPreparing}>Move to preparing <ArrowRight size={13} /></button></div>}
 
-    {cancelOrder && <Modal title="Cancel order" description={`${cancelOrder.id} · ${cancelOrder.customer}`} submitLabel="Record cancellation" onClose={() => setCancelOrder(null)} onSubmit={confirmCancellation}><div className="field"><label htmlFor="cancel-reason">Cancellation reason</label><select id="cancel-reason" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}>{["Customer requested cancellation", "Payment issue", "Item unavailable", "Address issue", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div><div className="order-action-notice"><ShieldAlert size={14} /><span>Cancellation does not refund a captured payment automatically. Record the refund separately after confirming it with the payment provider.</span></div></Modal>}
-    {returnOrder && <Modal title="Log a return request" description={`${returnOrder.id} · ${returnOrder.customer}`} submitLabel="Save return request" onClose={() => setReturnOrder(null)} onSubmit={confirmReturn}><div className="field"><label htmlFor="return-reason">Return reason</label><select id="return-reason" value={returnReason} onChange={(event) => setReturnReason(event.target.value)}>{["Changed my mind", "Damaged item", "Wrong item sent", "Product quality issue", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div><div className="order-action-notice"><Truck size={14} /><span>This creates a return review task for the operations team.</span></div></Modal>}
-    {refundOrder && <Modal title="Record a refund" description={`${refundOrder.id} · ${refundOrder.customer}`} submitLabel="Save refund record" onClose={() => setRefundOrder(null)} onSubmit={confirmRefund}><div className="order-refund-context"><BadgeIndianRupee size={16} /><span>Remaining refundable amount<strong>{formatCurrency(Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0)))}</strong></span></div><div className="form-grid-two"><div className="field"><label htmlFor="refund-amount">Refund amount (₹)</label><input id="refund-amount" type="number" min="1" step="1" max={Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0))} value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} /></div><div className="field"><label htmlFor="refund-reason">Reason</label><select id="refund-reason" value={refundReason} onChange={(event) => setRefundReason(event.target.value)}>{["Customer return", "Damaged item", "Wrong item sent", "Partial order issue", "Customer goodwill", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div></div><div className="order-action-notice"><ShieldAlert size={14} /><span>This logs the refund status against the order in the database. Ensure payment gateway refund is processed.</span></div></Modal>}
+          <div className="table-wrap"><table className="orders-workflow-table"><thead><tr><th><input type="checkbox" aria-label="Select all paid orders ready for fulfilment" checked={allVisibleSelected} onChange={(event) => {
+            const eligible = new Set(selectableVisible);
+            setSelectedIds((current) => event.target.checked ? [...new Set([...current, ...eligible])] : current.filter((id) => !eligible.has(id)));
+          }} /></th><th>Order</th><th>Customer</th><th>Placed</th><th>Total</th><th>Payment</th><th>Fulfilment</th><th>Next step</th><th /></tr></thead><tbody>
+            {filteredOrders.map((order) => <tr key={order.id}>
+              <td><input type="checkbox" aria-label={`Select order ${order.id}`} checked={selectedIds.includes(order.id)} disabled={!canStartPreparing(order)} onChange={(event) => toggleSelection(order.id, event.target.checked)} /></td>
+              <td><div className="person order-person"><span className="activity-icon"><PackageCheck size={14} /></span><div><div className="person-name">{order.id}</div><div className="person-sub">{order.item}{order.couponCode ? ` · ${order.couponCode}` : ""}</div></div></div></td>
+              <td><div className="order-customer-cell"><Avatar initials={order.customer.split(" ").map((part) => part[0]).join("")} /><span><strong>{order.customer}</strong><small>{order.customerEmail ?? "Email not recorded"}</small></span></div></td>
+              <td>{order.date}</td><td><strong>{formatCurrency(parseAmount(order))}</strong></td>
+              <td><div className="order-payment-cell"><StatusPill status={order.paymentStatus ?? "Pending"} />{order.paymentMethod && <small>{order.paymentMethod}</small>}</div></td>
+              <td><div className="order-fulfillment-cell"><StatusPill status={order.status} /><small>{progressFor(order)}</small></div></td>
+              <td><span className={`order-next-step ${order.status === "Needs attention" ? "attention" : ""}`}>{nextAction(order)}</span></td>
+              <td><button className="row-action" aria-label={`Open order ${order.id}`} onClick={() => setSelectedOrderId(order.id)}><ArrowRight size={15} /></button></td>
+            </tr>)}
+            {filteredOrders.length === 0 && <tr><td colSpan={9}><div className="empty-state">No orders match these filters. Try a different queue or reset the filters.</div></td></tr>}
+          </tbody></table></div>
+          <div className="table-footer"><span>{filteredOrders.length} orders · live order queue</span><span>Page 1 of 1</span></div>
+        </section>
+
+        {selectedOrder && <Modal className="order-details-modal order-workflow-modal" title={`Order ${selectedOrder.id}`} description={`${selectedOrder.customer} · ${selectedOrder.date}`} submitLabel={nextAction(selectedOrder)} onClose={() => setSelectedOrderId(null)} onSubmit={handlePrimaryAction}>
+          <OrderDetails order={selectedOrder} relatedOrders={normalizedOrders.filter((order) => order.customerEmail && order.customerEmail === selectedOrder.customerEmail && order.id !== selectedOrder.id).slice(0, 4)} />
+          {selectedOrder.status === "Preparing" && <div className="shipping-entry"><div className="field-heading"><Truck size={14} />Dispatch details</div>{selectedOrder.shiprocketShipmentId ? <p className="form-help">Shiprocket shipment {selectedOrder.shiprocketShipmentId} · AWB {selectedOrder.trackingNumber || "pending"}</p> : selectedOrder.shiprocketStatus === "needs_review" || selectedOrder.shiprocketStatus === "processing" ? <div className="order-action-notice"><ShieldAlert size={14} /><span>Shiprocket request needs reconciliation in the Shiprocket panel before retrying.</span></div> : <button className="button button-secondary" type="button" disabled={shiprocketLoading} onClick={() => void createShiprocketShipment(selectedOrder)}><Truck size={13} />{shiprocketLoading ? "Creating Shiprocket shipment…" : "Create Shiprocket shipment & request pickup"}</button>}<div className="form-grid-two"><div className="field"><label htmlFor="order-courier">Courier</label><input id="order-courier" value={dispatchDetails.courier} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, courier: event.target.value } }))} placeholder="e.g. Delhivery" /></div><div className="field"><label htmlFor="order-tracking">Tracking / AWB number</label><input id="order-tracking" value={dispatchDetails.trackingNumber} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, trackingNumber: event.target.value } }))} placeholder="Enter courier tracking number" /></div></div><p className="form-help">Use Shiprocket to create a shipment and request pickup, or enter courier details manually.</p></div>}
+          {selectedOrder.paymentStatus !== "Paid" && selectedOrder.paymentMethod !== "Cash on Delivery" && ["New", "Needs attention"].includes(selectedOrder.status) && <div className="order-action-notice"><ShieldAlert size={14} /><span>Payment is {selectedOrder.paymentStatus?.toLowerCase() ?? "not confirmed"}. Confirm payment before starting fulfilment.</span></div>}
+          <div className="order-modal-actions">{canCancel(selectedOrder) && <button className="button button-secondary danger-button" onClick={() => { setCancelOrder(selectedOrder); setCancelReason("Customer requested cancellation"); }}>Cancel order</button>}{canRefund(selectedOrder) && <button className="button button-secondary" onClick={() => setRefundTarget(selectedOrder)}><Undo2 size={13} />Record refund</button>}</div>
+          {selectedOrder.status === "Delivered" && <div className="order-modal-actions"><button className="button button-secondary" onClick={() => { setReturnOrder(selectedOrder); setReturnReason("Changed my mind"); }}>Log a return request</button></div>}
+          <p className="form-help order-demo-footnote">Actions sync with backend API and live patient order timeline.</p>
+        </Modal>}
+
+        {cancelOrder && <Modal title="Cancel order" description={`${cancelOrder.id} · ${cancelOrder.customer}`} submitLabel="Record cancellation" onClose={() => setCancelOrder(null)} onSubmit={confirmCancellation}><div className="field"><label htmlFor="cancel-reason">Cancellation reason</label><select id="cancel-reason" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)}>{["Customer requested cancellation", "Payment issue", "Item unavailable", "Address issue", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div><div className="order-action-notice"><ShieldAlert size={14} /><span>Cancellation does not refund a captured payment automatically. Record the refund separately after confirming it with the payment provider.</span></div></Modal>}
+        {returnOrder && <Modal title="Log a return request" description={`${returnOrder.id} · ${returnOrder.customer}`} submitLabel="Save return request" onClose={() => setReturnOrder(null)} onSubmit={confirmReturn}><div className="field"><label htmlFor="return-reason">Return reason</label><select id="return-reason" value={returnReason} onChange={(event) => setReturnReason(event.target.value)}>{["Changed my mind", "Damaged item", "Wrong item sent", "Product quality issue", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div><div className="order-action-notice"><Truck size={14} /><span>This creates a return review task for the operations team.</span></div></Modal>}
+        {refundOrder && <Modal title="Record a refund" description={`${refundOrder.id} · ${refundOrder.customer}`} submitLabel="Save refund record" onClose={() => setRefundOrder(null)} onSubmit={confirmRefund}><div className="order-refund-context"><BadgeIndianRupee size={16} /><span>Remaining refundable amount<strong>{formatCurrency(Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0)))}</strong></span></div><div className="form-grid-two"><div className="field"><label htmlFor="refund-amount">Refund amount (₹)</label><input id="refund-amount" type="number" min="1" step="1" max={Math.max(0, parseAmount(refundOrder) - (refundOrder.refundAmount ?? 0))} value={refundAmount} onChange={(event) => setRefundAmount(event.target.value)} /></div><div className="field"><label htmlFor="refund-reason">Reason</label><select id="refund-reason" value={refundReason} onChange={(event) => setRefundReason(event.target.value)}>{["Customer return", "Damaged item", "Wrong item sent", "Partial order issue", "Customer goodwill", "Other"].map((reason) => <option key={reason}>{reason}</option>)}</select></div></div><div className="order-action-notice"><ShieldAlert size={14} /><span>This logs the refund status against the order in the database. Ensure payment gateway refund is processed.</span></div></Modal>}
+      </>
+    )}
   </div>;
 }
 

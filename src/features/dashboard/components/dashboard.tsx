@@ -5,9 +5,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 import { Avatar, PageHeader, StatusPill } from "../../shared/components/ui";
 import { useSessionState } from "../../shared/lib/use-session-state";
-import { admins as initialAdmins, bookings as initialBookings, orders as initialOrders, patients as initialPatients } from "../../shared/lib/demo-data";
 import { patientClinicalProfiles } from "../../operations/lib/patient-profiles";
-import { initialHairTests } from "../../operations/lib/hair-test-demo";
 import type { AdminRecord, AuditEventRecord, PageKey, Role, Status } from "../../shared/types";
 import type { OrderRecord, PatientRecord } from "../../shared/types";
 import type { BookingRecord } from "../../shared/types";
@@ -26,7 +24,7 @@ type RegisteredPatient = {
   createdAt: string;
 };
 
-export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissions = [], events = [], admins = initialAdmins, onAudit = () => {}, onToast = () => {}, anchor = "" }: {
+export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissions = [], events = [], admins = [], onAudit = () => {}, onToast = () => {}, anchor = "" }: {
   role: Role;
   userName: string;
   onNavigate: (page: PageKey, options?: { bookingDate?: string; anchor?: string }) => void;
@@ -39,8 +37,8 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   anchor?: string;
 }) {
   const isSuper = role === "super-admin";
-  const [patients] = useSessionState<PatientRecord[]>("drhair-demo-patients", initialPatients);
-  const [bookings, setBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", initialBookings);
+  const [patients] = useSessionState<PatientRecord[]>("drhair-demo-patients", []);
+  const [bookings, setBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", []);
   const [clinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", ["2026-11-01", "2026-11-02", "2026-12-25", "2027-01-26"]);
   const [selectedAppointmentDate, setSelectedAppointmentDate] = useState(() => startOfToday());
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
@@ -56,11 +54,12 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   const [registeredPatientTotal, setRegisteredPatientTotal] = useState(0);
   const [registeredPatientsState, setRegisteredPatientsState] = useState<"loading" | "ready" | "error">("loading");
   const [liveBookings, setLiveBookings] = useState<BookingRecord[]>([]);
-  const [orders] = useSessionState<OrderRecord[]>("drhair-demo-orders", initialOrders);
+  const [liveBookingsLoaded, setLiveBookingsLoaded] = useState(false);
+  const [orders] = useSessionState<OrderRecord[]>("drhair-demo-orders", []);
   const [profiles] = useSessionState<Record<string, PatientClinicalProfile>>("drhair-demo-patient-profiles", patientClinicalProfiles);
-  const [hairTests] = useSessionState<HairTestRecord[]>("drhair-demo-hair-tests", initialHairTests);
+  const [hairTests] = useSessionState<HairTestRecord[]>("drhair-demo-hair-tests", []);
   const [notifications] = useSessionState<PatientReportNotification[]>("drhair-demo-patient-notifications", []);
-  const effectiveBookings = liveBookings.length > 0 ? liveBookings : bookings;
+  const effectiveBookings = liveBookingsLoaded ? liveBookings : [];
   const reviewPatients = patients.filter((patient) => patient.status === "Review" || patient.status === "Pending");
   const today = new Date().toDateString();
   const todayKey = localDateKey(startOfToday());
@@ -109,33 +108,37 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
     const controller = new AbortController();
     fetch("/api/admin/appointments", { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
-        if (!res.ok) return;
+        if (!res.ok) {
+          setLiveBookingsLoaded(true);
+          return;
+        }
         const result = await res.json().catch(() => ({}));
         const data = result?.data && typeof result.data === "object" ? result.data : {};
         const items = Array.isArray(data.items) ? data.items : [];
-        if (items.length > 0) {
-          setLiveBookings(items.map((item: Record<string, unknown>) => ({
-            id: String(item.id ?? ""),
-            customer: String(item.customer || item.name || "Patient"),
-            patientId: String(item.patientId || item.patient_code || item.userId || ""),
-            patientCode: typeof item.patient_code === "string" ? item.patient_code : undefined,
-            service: String(item.service || item.reason || "Clinic consultation"),
-            date: String(item.date || ""),
-            startsAt: typeof item.startsAt === "string" ? item.startsAt : (typeof item.starts_at === "string" ? item.starts_at : undefined),
-            status: (item.status || item.opdStatus || "Requested") as BookingRecord["status"],
-            source: (item.source || "App") as BookingRecord["source"],
-            doctorName: String(item.doctorName || item.doctor_name || "Dr. Jai Bansal"),
-            room: typeof item.room === "string" ? item.room : "Room 101 - Chamber A",
-            tokenNumber: typeof item.tokenNumber === "string" ? item.tokenNumber : (typeof item.opd_token === "string" ? item.opd_token : undefined),
-            opdStatus: (item.status || item.opdStatus || "Confirmed") as BookingRecord["opdStatus"],
-            consultationFee: typeof item.consultationFee === "number" ? item.consultationFee : (typeof item.consultation_fee === "number" ? item.consultation_fee : 500),
-            paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
-            paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
-            paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
-          })));
-        }
+        setLiveBookings(items.map((item: Record<string, unknown>) => ({
+          id: String(item.id ?? ""),
+          customer: String(item.customer || item.name || "Patient"),
+          patientId: String(item.patientId || item.patient_code || item.userId || ""),
+          patientCode: typeof item.patient_code === "string" ? item.patient_code : undefined,
+          service: String(item.service || item.reason || "Clinic consultation"),
+          date: String(item.date || ""),
+          startsAt: typeof item.startsAt === "string" ? item.startsAt : (typeof item.starts_at === "string" ? item.starts_at : undefined),
+          status: (item.status || item.opdStatus || "Requested") as BookingRecord["status"],
+          source: (item.source || "App") as BookingRecord["source"],
+          doctorName: String(item.doctorName || item.doctor_name || "Dr. Jai Bansal"),
+          room: typeof item.room === "string" ? item.room : "Room 101 - Chamber A",
+          tokenNumber: typeof item.tokenNumber === "string" ? item.tokenNumber : (typeof item.opd_token === "string" ? item.opd_token : undefined),
+          opdStatus: (item.status || item.opdStatus || "Confirmed") as BookingRecord["opdStatus"],
+          consultationFee: typeof item.consultationFee === "number" ? item.consultationFee : (typeof item.consultation_fee === "number" ? item.consultation_fee : 500),
+          paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
+          paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
+          paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
+        })));
+        setLiveBookingsLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        setLiveBookingsLoaded(true);
+      });
     return () => controller.abort();
   }, []);
 

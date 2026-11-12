@@ -25,7 +25,6 @@ import { useSessionState } from "../../shared/lib/use-session-state";
 import {
   initialBanners,
   initialCategories,
-  initialReviews,
   initialVideos,
 } from "../lib/demo-data";
 import type {
@@ -146,7 +145,7 @@ export function ContentManagement({
   const [videoLoadError, setVideoLoadError] = useState("");
   const [reviews, setReviews] = useSessionState<ReviewContentItem[]>(
     "drhair-demo-content-reviews",
-    initialReviews
+    []
   );
   const [banners, setBanners] = useSessionState<BannerContentItem[]>(
     "drhair-demo-content-banners",
@@ -227,9 +226,7 @@ export function ContentManagement({
         const result = await response.json().catch(() => ({}));
         if (!response.ok) return;
         const items = Array.isArray(result?.data?.items) ? result.data.items : [];
-        if (items.length > 0) {
-          setReviews(items.map(mapSavedReview));
-        }
+        setReviews(items.map(mapSavedReview));
       })
       .catch(() => {});
     return () => controller.abort();
@@ -1146,6 +1143,13 @@ export function ContentManagement({
                     </td>
                   </tr>
                 ))}
+                {filteredReviews.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                      {reviews.length === 0 ? "No patient reviews submitted yet." : "No patient reviews match the search or category filters."}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1232,7 +1236,7 @@ export function ContentManagement({
             ))}
             {filteredReviews.length === 0 && (
               <div className="col-span-full py-12 text-center text-slate-400 text-xs">
-                No patient reviews match the search or category filters.
+                {reviews.length === 0 ? "No patient reviews submitted yet." : "No patient reviews match the search or category filters."}
               </div>
             )}
           </div>
@@ -1292,6 +1296,13 @@ export function ContentManagement({
                     </td>
                   </tr>
                 ))}
+                {filteredReviews.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
+                      {reviews.length === 0 ? "No patient reviews submitted yet." : "No patient reviews match the search or category filters."}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -6,7 +6,6 @@ import { PageHeader, StatusPill, TableToolbar } from "../../shared/components/ui
 import { useSessionState } from "../../shared/lib/use-session-state";
 import type { AdminPermissionId, PatientRecord } from "../../shared/types";
 import { patientClinicalProfiles } from "../lib/patient-profiles";
-import { initialHairTests } from "../lib/hair-test-demo";
 import { createFallbackProfile } from "./patient-profile-dialog";
 import type { HairTestRecord, HairTestStatus, PatientClinicalProfile, PatientReportNotification } from "../types";
 
@@ -30,7 +29,7 @@ export function HairTestsPage({
   onToast: (message: string) => void;
   onAudit: (action: string, target: string) => void;
 }) {
-  const [records, setRecords] = useSessionState<HairTestRecord[]>("drhair-demo-hair-tests", initialHairTests);
+  const [records, setRecords] = useState<HairTestRecord[]>([]);
   const [profiles, setProfiles] = useSessionState<Record<string, PatientClinicalProfile>>("drhair-demo-patient-profiles", patientClinicalProfiles);
   const [notifications, setNotifications] = useSessionState<PatientReportNotification[]>("drhair-demo-patient-notifications", []);
   const [query, setQuery] = useState("");
@@ -100,9 +99,7 @@ export function HairTestsPage({
         });
       }
 
-      if (combined.length > 0) {
-        setRecords(combined);
-      }
+      setRecords(combined);
     });
 
     return () => controller.abort();
@@ -257,7 +254,17 @@ export function HairTestsPage({
             {record.status === "Shared" && <span className="person-sub">Visible in patient app</span>}
           </div></td>
         </tr>)}
-        {filtered.length === 0 && <tr><td colSpan={6}><div className="empty-state">No hair test records match this search.</div></td></tr>}
+        {filtered.length === 0 && (
+          <tr>
+            <td colSpan={6}>
+              <div className="empty-state">
+                {records.length === 0
+                  ? "No hair assessment submissions or clinical reports yet."
+                  : "No hair test records match this search."}
+              </div>
+            </td>
+          </tr>
+        )}
       </tbody></table></div>
       <div className="table-footer"><span>Showing {filtered.length} of {records.length} test records</span><span>Stored in secure Cloudinary clinical storage</span></div>
     </section>

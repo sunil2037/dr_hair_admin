@@ -11,6 +11,7 @@ export function AppointmentBillingControl({
   onAudit?: (action: string, target: string) => void;
 }) {
   const [paymentRequired, setPaymentRequired] = useState(false);
+  const [firstAppointmentFree, setFirstAppointmentFree] = useState(false);
   const [fee, setFee] = useState<number>(500);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -23,6 +24,7 @@ export function AppointmentBillingControl({
         const json = await res.json();
         const data = json.data || {};
         setPaymentRequired(Boolean(data.payment_required));
+        setFirstAppointmentFree(Boolean(data.first_appointment_free));
         setFee(Number(data.consultation_fee ?? 500));
       }
     } catch {
@@ -49,15 +51,16 @@ export function AppointmentBillingControl({
         body: JSON.stringify({
           payment_required: paymentRequired,
           consultation_fee: fee,
+          first_appointment_free: firstAppointmentFree,
         }),
       });
 
       if (res.ok) {
-        onToast(`Appointment billing updated: Payment ${paymentRequired ? "Required (ON)" : "Optional / Free (OFF)"} with fee ₹${fee}.`);
+        onToast(`Appointment billing updated: Payment ${paymentRequired ? "Required (ON)" : "Optional / Free (OFF)"}, 1st Visit ${firstAppointmentFree ? "FREE (ON)" : "Paid (OFF)"}, fee ₹${fee}.`);
         onAudit(
           paymentRequired
-            ? `enabled mandatory online appointment payment (₹${fee})`
-            : `disabled mandatory appointment payment (pay at clinic / free booking)`,
+            ? `enabled mandatory online appointment payment (₹${fee}, 1st free: ${firstAppointmentFree})`
+            : `disabled mandatory appointment payment (pay at clinic / free booking, 1st free: ${firstAppointmentFree})`,
           "Appointment Billing",
         );
       } else {
@@ -98,52 +101,73 @@ export function AppointmentBillingControl({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-        {/* Toggle Card */}
-        <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 flex items-center justify-between">
-          <div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+        {/* Toggle Card 1: Mandatory Online Payment */}
+        <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
             <div className="font-bold text-xs text-slate-800">
               Require Online Payment
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              {paymentRequired
-                ? "Active: Patient must pay fee via Razorpay to book slot."
-                : "Inactive: Patient can book slot without online payment."}
-            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={paymentRequired}
+                onChange={(e) => setPaymentRequired(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+            </label>
           </div>
+          <div className="text-[11px] text-slate-500">
+            {paymentRequired
+              ? "Active: Patient must pay fee via Razorpay to book slot."
+              : "Inactive: Patient can book slot without online payment."}
+          </div>
+        </div>
 
-          <label className="relative inline-flex items-center cursor-pointer ml-4">
-            <input
-              type="checkbox"
-              checked={paymentRequired}
-              onChange={(e) => setPaymentRequired(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
-          </label>
+        {/* Toggle Card 2: First Appointment Free */}
+        <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-bold text-xs text-slate-800">
+              First Appointment Free
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={firstAppointmentFree}
+                onChange={(e) => setFirstAppointmentFree(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
+            </label>
+          </div>
+          <div className="text-[11px] text-slate-500">
+            {firstAppointmentFree
+              ? "Active: 1st clinic consultation is ₹0 Free for all new patients."
+              : "Inactive: Standard consultation fee applies to first visit."}
+          </div>
         </div>
 
         {/* Custom Fee Card */}
-        <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 flex items-center justify-between gap-4">
-          <div>
+        <div className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-2">
             <div className="font-bold text-xs text-slate-800">
               Consultation Fee (₹)
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              Doctor visit fee charged per clinic booking.
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-bold text-slate-400">₹</span>
+              <input
+                type="number"
+                min={0}
+                step={50}
+                value={fee}
+                onChange={(e) => setFee(Math.max(0, Number(e.target.value)))}
+                className="w-20 px-2 py-1 text-xs font-bold border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 text-right"
+              />
             </div>
           </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-bold text-slate-400">₹</span>
-            <input
-              type="number"
-              min={0}
-              step={50}
-              value={fee}
-              onChange={(e) => setFee(Math.max(0, Number(e.target.value)))}
-              className="w-24 px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 text-right"
-            />
+          <div className="text-[11px] text-slate-500">
+            Doctor visit fee charged per clinic booking when payable.
           </div>
         </div>
       </div>

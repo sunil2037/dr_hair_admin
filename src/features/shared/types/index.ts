@@ -133,11 +133,19 @@ export interface BookingRecord {
   doctorName?: string;
   room?: string;
   tokenNumber?: string;
-  opdStatus?: "Requested" | "Confirmed" | "Arrived" | "In Consultation" | "Completed" | "No show";
+  opdStatus?: "Requested" | "Confirmed" | "Arrived" | "In Consultation" | "Completed" | "No show" | "Cancelled";
   consultationFee?: number;
   paymentStatus?: "Pending" | "Paid" | "Refunded" | "Waived";
   paymentMethod?: string;
   paymentTransactionId?: string;
+  cancellationReason?: string;
+  cancellation_reason?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  rescheduleReason?: string;
+  reschedule_reason?: string;
+  rescheduledBy?: string;
+  rescheduledAt?: string;
 }
 
 export interface AuditEventRecord {

@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  AlertCircle,
   AlertTriangle,
   ArrowRight,
   Building2,
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
   ClipboardCheck,
@@ -108,6 +110,11 @@ function CareOperationsPage({
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentSlot, setAppointmentSlot] = useState("10:30 AM");
+  const [appointmentRescheduleReason, setAppointmentRescheduleReason] = useState("");
+  const [cancelBookingTarget, setCancelBookingTarget] = useState<BookingRecord | null>(null);
+  const [cancellationPreset, setCancellationPreset] = useState("Doctor unavailable / Emergency surgery");
+  const [customCancellationReason, setCustomCancellationReason] = useState("");
+  const [submittingCancel, setSubmittingCancel] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const apiSearch = `${globalSearch} ${query}`.trim();
   const patientPage = patientPageState.search === apiSearch ? patientPageState.page : 1;
@@ -143,6 +150,11 @@ function CareOperationsPage({
           paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
           paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
           paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
+          cancellationReason: typeof item.cancellationReason === "string" ? item.cancellationReason : (typeof item.cancellation_reason === "string" ? item.cancellation_reason : undefined),
+          cancellation_reason: typeof item.cancellation_reason === "string" ? item.cancellation_reason : (typeof item.cancellationReason === "string" ? item.cancellationReason : undefined),
+          cancelledBy: typeof item.cancelledBy === "string" ? item.cancelledBy : (typeof item.cancelled_by === "string" ? item.cancelled_by : undefined),
+          rescheduleReason: typeof item.rescheduleReason === "string" ? item.rescheduleReason : (typeof item.reschedule_reason === "string" ? item.reschedule_reason : undefined),
+          reschedule_reason: typeof item.reschedule_reason === "string" ? item.reschedule_reason : (typeof item.rescheduleReason === "string" ? item.rescheduleReason : undefined),
         })));
       } catch {
         // Retain current bookings state
@@ -473,7 +485,11 @@ function CareOperationsPage({
         const response = await fetch(`/api/admin/appointments/${encodeURIComponent(editingAppointmentId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "reschedule", starts_at: start.toISOString() }),
+          body: JSON.stringify({
+            action: "reschedule",
+            starts_at: start.toISOString(),
+            reason: appointmentRescheduleReason.trim(),
+          }),
           cache: "no-store",
         });
         const result = await response.json().catch(() => ({}));
@@ -482,7 +498,7 @@ function CareOperationsPage({
           return;
         }
         onAudit("rescheduled clinic appointment", `${editingAppointmentId} · ${patient.id}`);
-        onToast("Appointment rescheduled with Dr. Jai Bansal.");
+        onToast("Appointment rescheduled and push notification sent to patient.");
       } else {
         const response = await fetch("/api/admin/appointments", {
           method: "POST",
@@ -536,6 +552,7 @@ function CareOperationsPage({
     setAppointmentSlot("10:30 AM");
     setAppointmentService("Clinic consultation");
     setAppointmentSource("Phone");
+    setAppointmentRescheduleReason("");
   };
 
   const rescheduleAppointment = (appointment: BookingRecord) => {
@@ -543,6 +560,7 @@ function CareOperationsPage({
     setEditingAppointmentId(appointment.id);
     setAppointmentPatientId(appointment.patientId ?? "");
     setAppointmentService(appointment.service);
+    setAppointmentRescheduleReason("");
     const timestamp = bookingTimestamp(appointment);
     if (timestamp) {
       const d = new Date(timestamp);
@@ -558,6 +576,50 @@ function CareOperationsPage({
     setDialog(null);
     setShowScheduleModal(false);
     setShowAppointmentForm(true);
+  };
+
+  const handleCancelClick = (appointment: BookingRecord) => {
+    setCancelBookingTarget(appointment);
+    setCancellationPreset("Doctor unavailable / Emergency surgery");
+    setCustomCancellationReason("");
+  };
+
+  const handleConfirmCancellation = async () => {
+    if (!cancelBookingTarget) return;
+    const finalReason = (
+      cancellationPreset === "Other"
+        ? customCancellationReason
+        : customCancellationReason.trim()
+        ? `${cancellationPreset}: ${customCancellationReason.trim()}`
+        : cancellationPreset
+    ).trim() || "Cancelled by clinic administration";
+
+    setSubmittingCancel(true);
+    try {
+      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(cancelBookingTarget.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "Cancelled",
+          cancellation_reason: finalReason,
+        }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || "Could not cancel appointment.");
+        return;
+      }
+      onAudit("cancelled clinic appointment", `${cancelBookingTarget.id} · Reason: ${finalReason}`);
+      onToast("Appointment cancelled. Push notification sent to patient.");
+      setCancelBookingTarget(null);
+      setDialog(null);
+      setReloadBookings((c) => c + 1);
+    } catch {
+      onToast("Network error cancelling appointment.");
+    } finally {
+      setSubmittingCancel(false);
+    }
   };
 
   return (
@@ -924,11 +986,40 @@ function CareOperationsPage({
                 <span className="text-slate-500">Status:</span>
                 <StatusPill status={bookingStatusLabel(dialog)} />
               </div>
+
+              {(dialog.cancellationReason || dialog.cancellation_reason) && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-900">
+                  <div className="font-bold flex items-center gap-1.5 text-rose-700">
+                    <AlertCircle size={14} />
+                    Cancellation Reason:
+                  </div>
+                  <div className="mt-1 text-slate-700 font-medium">
+                    {dialog.cancellationReason || dialog.cancellation_reason}
+                  </div>
+                  {dialog.cancelledBy && (
+                    <div className="mt-1 text-[10px] text-slate-400">
+                      Cancelled by: {dialog.cancelledBy}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(dialog.rescheduleReason || dialog.reschedule_reason) && (
+                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900">
+                  <div className="font-bold flex items-center gap-1.5 text-blue-700">
+                    <CalendarClock size={14} />
+                    Reschedule Note:
+                  </div>
+                  <div className="mt-1 text-slate-700 font-medium">
+                    {dialog.rescheduleReason || dialog.reschedule_reason}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="appointment-detail-actions [&>.button]:flex-[1_1_auto]">
               {permissions.includes("patients.view") && <button type="button" onClick={() => handleOpenPatientFromBooking(dialog)} className="button button-secondary"><FileText size={14} /> Open patient chart</button>}
-              {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("Cancelled")} className="button button-danger">Cancel visit</button>}
+              {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => handleCancelClick(dialog)} className="button button-danger">Cancel visit</button>}
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("No show")} className="button button-secondary">Mark no-show</button>}
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => rescheduleAppointment(dialog)} className="button button-secondary">Reschedule</button>}
               {dialog.paymentStatus !== "Paid" && !['Cancelled', 'Completed', 'No show'].includes(dialog.status) && (
@@ -1016,6 +1107,18 @@ function CareOperationsPage({
                   </optgroup>)}
                 </select>
               </label>
+
+              {editingAppointmentId && (
+                <label className="field sm:col-span-2">
+                  <span>Reschedule Note / Reason (Sent via push notification to patient)</span>
+                  <input
+                    placeholder="e.g. Doctor schedule adjusted due to surgical emergency"
+                    value={appointmentRescheduleReason}
+                    onChange={(event) => setAppointmentRescheduleReason(event.target.value)}
+                    maxLength={150}
+                  />
+                </label>
+              )}
             </div>
 
             {appointmentDate && isSundayDateKey(appointmentDate) && (
@@ -1031,6 +1134,54 @@ function CareOperationsPage({
                 <span><strong>Date closed:</strong> New appointments cannot be added on this date. Reopen it in Manage availability to accept bookings again.</span>
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Admin Appointment Cancellation Modal */}
+      {cancelBookingTarget && (
+        <Modal
+          title={`Cancel Appointment · ${cancelBookingTarget.id}`}
+          description={`Patient: ${cancelBookingTarget.customer} · Scheduled: ${cancelBookingTarget.date}`}
+          submitLabel={submittingCancel ? "Cancelling…" : "Confirm Cancellation & Notify Patient"}
+          submitDisabled={submittingCancel || (cancellationPreset === "Other" && !customCancellationReason.trim())}
+          onClose={() => setCancelBookingTarget(null)}
+          onSubmit={handleConfirmCancellation}
+        >
+          <div className="space-y-3 text-xs">
+            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 flex items-start gap-2">
+              <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>Cancellation Notice:</strong> A push notification and in-app message will automatically be dispatched to the patient with the reason provided below.
+              </div>
+            </div>
+
+            <label className="field">
+              <span>Select Cancellation Reason *</span>
+              <select
+                value={cancellationPreset}
+                onChange={(e) => setCancellationPreset(e.target.value)}
+              >
+                <option value="Doctor unavailable / Emergency surgery">Doctor unavailable / Emergency surgery</option>
+                <option value="Clinic holiday / Facility maintenance">Clinic holiday / Facility maintenance</option>
+                <option value="Patient requested cancellation">Patient requested cancellation</option>
+                <option value="Doctor schedule conflict / Re-slotting required">Doctor schedule conflict / Re-slotting required</option>
+                <option value="Severe weather / Transport disruption">Severe weather / Transport disruption</option>
+                <option value="Other">Other / Custom reason</option>
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Additional Note / Custom Reason {cancellationPreset === "Other" ? "*" : "(Optional)"}</span>
+              <textarea
+                rows={3}
+                placeholder="Enter specific details to display on patient's app and push notification..."
+                value={customCancellationReason}
+                onChange={(e) => setCustomCancellationReason(e.target.value)}
+                maxLength={300}
+                className="w-full p-2 border border-slate-300 rounded-md text-xs resize-none"
+              />
+            </label>
           </div>
         </Modal>
       )}
@@ -1451,6 +1602,16 @@ function AppointmentList({ bookings, onOpen, onAdvance }: {
         <div className="appointment-card-service min-[461px]:col-span-2 min-[761px]:col-span-1 min-[761px]:col-start-2 min-[761px]:row-start-1 min-[1101px]:col-auto min-[1101px]:row-auto">
           <strong>{booking.service}</strong>
           <span><Building2 size={12} />{booking.room ?? "Room 101"} · {booking.doctorName ?? "Dr. Jai Bansal"}</span>
+          {(booking.cancellationReason || booking.cancellation_reason) && (
+            <span className="text-[11px] font-medium text-rose-600 block mt-0.5">
+              Reason: {booking.cancellationReason || booking.cancellation_reason}
+            </span>
+          )}
+          {(booking.rescheduleReason || booking.reschedule_reason) && (
+            <span className="text-[11px] font-medium text-blue-600 block mt-0.5">
+              Note: {booking.rescheduleReason || booking.reschedule_reason}
+            </span>
+          )}
         </div>
         <div className="appointment-card-time min-[461px]:col-start-1 min-[761px]:row-start-2 min-[1101px]:col-auto min-[1101px]:row-auto">
           <strong>{formatBookingDateTime(booking)}</strong>

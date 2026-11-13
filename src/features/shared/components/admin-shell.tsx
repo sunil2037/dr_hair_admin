@@ -126,7 +126,7 @@ export function AdminShell({
   const mobileNavRef = useRef<HTMLDivElement>(null);
 
   const nav = visibleNavigation(role, panelAccess, permissions);
-  const preferredMobileKeys: PageKey[] = ["overview", "patients", "bookings", "tests"];
+  const preferredMobileKeys: PageKey[] = ["overview", "catalog", "bookings", "content"];
   const mobilePrimaryNav = [
     ...preferredMobileKeys.map((key) => nav.find((item) => item.key === key)).filter((item) => item !== undefined),
     ...nav.filter((item) => !preferredMobileKeys.includes(item.key)),
@@ -274,11 +274,11 @@ export function AdminShell({
         className="fixed inset-y-0 left-3 z-40 hidden w-[68px] flex-col items-center justify-between py-5 select-none md:flex lg:left-5"
         aria-label="Main navigation"
       >
-        <div className="flex h-11 w-11 items-center justify-center">
-          <Image src="/logo-badge.png" alt="Dr. Hair" width={40} height={40} priority className="h-10 w-10 rounded-full object-cover" />
+        <div className="flex h-11 w-11 items-center justify-center transition-transform duration-300 hover:scale-105">
+          <Image src="/logo-badge.png" alt="Dr. Hair" width={40} height={40} priority className="h-10 w-10 rounded-full object-cover shadow-xs" />
         </div>
 
-        <nav className="flex max-h-[calc(100vh-220px)] w-fit flex-col items-center gap-1 overflow-y-auto rounded-full bg-white/95 p-1.5 shadow-[0_2px_10px_rgba(26,54,93,0.09)] [scrollbar-width:none]" aria-label="Workspace tabs">
+        <nav className="flex max-h-[calc(100vh-220px)] w-fit flex-col items-center gap-1.5 overflow-y-auto rounded-full bg-white/95 p-1.5 shadow-[0_2px_12px_rgba(26,54,93,0.08)] [scrollbar-width:none] border border-slate-100/80 backdrop-blur-md" aria-label="Workspace tabs">
           {nav.map((item) => {
             const isActive = page === item.key;
             return (
@@ -290,13 +290,27 @@ export function AdminShell({
                 title={item.label}
                 onClick={() => onPageChange(item.key)}
                 className={[
-                  "group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-150",
-                  isActive ? "bg-[#F5F8FB] text-[#0D9488]" : "bg-transparent text-slate-600 hover:bg-transparent hover:text-[#1A365D]",
+                  "group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all duration-200 ease-out",
+                  isActive
+                    ? "bg-[#F0FDF4]/90 text-[#0D9488] shadow-xs scale-102"
+                    : "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-[#1A365D] hover:scale-105 active:scale-95",
                 ].join(" ")}
               >
-                {getNavIcon(item.key, isActive)}
-                {Boolean(item.count) && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#0D9488] ring-2 ring-white" />}
-                <span className="pointer-events-none absolute left-[calc(100%+12px)] z-50 whitespace-nowrap rounded-lg bg-[#1A365D] px-2.5 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                {/* Active indicator slide pill on the left */}
+                {isActive && (
+                  <span className="absolute -left-1.5 h-5 w-1 rounded-r-full bg-[#0D9488] shadow-[0_0_8px_rgba(13,148,136,0.5)] transition-all duration-300 ease-out" />
+                )}
+
+                <span className="transition-transform duration-200 ease-out group-hover:scale-110">
+                  {getNavIcon(item.key, isActive)}
+                </span>
+
+                {Boolean(item.count) && (
+                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#0D9488] ring-2 ring-white animate-pulse" />
+                )}
+
+                {/* Smooth slide-in tooltip with subtle backdrop blur & arrow */}
+                <span className="pointer-events-none absolute left-[calc(100%+14px)] z-50 flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#1A365D] px-3 py-1.5 text-xs font-semibold text-white shadow-xl opacity-0 translate-x-2 transition-all duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0">
                   {item.label}
                 </span>
               </button>
@@ -304,31 +318,57 @@ export function AdminShell({
           })}
         </nav>
 
-        <div className="rounded-full bg-white/95 p-1.5 shadow-[0_2px_10px_rgba(26,54,93,0.09)]">
-          <button type="button" aria-label="Settings" title="Settings" onClick={() => setSettingsModalOpen(true)} className="group relative flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-slate-600 transition-colors hover:bg-transparent hover:text-[#1A365D]">
-            <Settings size={19} strokeWidth={1.75} />
-            <span className="pointer-events-none absolute left-[calc(100%+12px)] z-50 whitespace-nowrap rounded-lg bg-[#1A365D] px-2.5 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">Settings</span>
+        <div className="rounded-full bg-white/95 p-1.5 shadow-[0_2px_10px_rgba(26,54,93,0.09)] border border-slate-100/80 backdrop-blur-md">
+          <button
+            type="button"
+            aria-label="Settings"
+            title="Settings"
+            onClick={() => setSettingsModalOpen(true)}
+            className="group relative flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-slate-500 transition-all duration-200 ease-out hover:bg-slate-50 hover:text-[#1A365D] hover:scale-105 active:scale-95"
+          >
+            <span className="transition-transform duration-200 ease-out group-hover:rotate-45">
+              <Settings size={19} strokeWidth={1.75} />
+            </span>
+            <span className="pointer-events-none absolute left-[calc(100%+14px)] z-50 whitespace-nowrap rounded-xl bg-[#1A365D] px-3 py-1.5 text-xs font-semibold text-white opacity-0 translate-x-2 shadow-xl transition-all duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0">
+              Settings
+            </span>
           </button>
         </div>
 
-        <div ref={profileRef} className="relative flex flex-col items-center gap-1 rounded-full bg-white/95 p-1.5 shadow-[0_2px_10px_rgba(26,54,93,0.09)]">
-          <button type="button" aria-label={"Profile: " + userName} title={userName} onClick={() => setProfileMenuOpen(!profileMenuOpen)} className="group flex h-11 w-11 items-center justify-center rounded-full bg-transparent">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#1A365D] text-xs font-bold text-white shadow-sm transition-shadow group-hover:ring-2 group-hover:ring-[#0D9488]">{initials}</span>
+        <div ref={profileRef} className="relative flex flex-col items-center gap-1.5 rounded-full bg-white/95 p-1.5 shadow-[0_2px_10px_rgba(26,54,93,0.09)] border border-slate-100/80 backdrop-blur-md">
+          <button
+            type="button"
+            aria-label={"Profile: " + userName}
+            title={userName}
+            onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+            className="group flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-transform duration-200 hover:scale-105 active:scale-95"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#1A365D] text-xs font-bold text-white shadow-sm transition-all duration-200 group-hover:ring-2 group-hover:ring-[#0D9488]">
+              {initials}
+            </span>
           </button>
-          <button type="button" aria-label="Sign out" title="Sign out" onClick={onSignOut} className="group flex h-10 w-11 items-center justify-center rounded-full bg-transparent text-slate-500 transition-colors hover:bg-transparent hover:text-red-600">
-            <LogOut size={18} strokeWidth={1.75} />
+          <button
+            type="button"
+            aria-label="Sign out"
+            title="Sign out"
+            onClick={onSignOut}
+            className="group flex h-10 w-11 items-center justify-center rounded-full bg-transparent text-slate-400 transition-all duration-200 hover:bg-red-50/60 hover:text-red-600 hover:scale-105 active:scale-95"
+          >
+            <span className="transition-transform duration-200 group-hover:-translate-x-0.5">
+              <LogOut size={18} strokeWidth={1.75} />
+            </span>
           </button>
 
           {profileMenuOpen && (
-            <div className="absolute bottom-0 left-[calc(100%+12px)] z-50 w-64 space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl animate-in fade-in slide-in-from-left-2 duration-200">
+            <div className="absolute bottom-0 left-[calc(100%+14px)] z-50 w-64 space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl animate-in fade-in slide-in-from-left-3 duration-200">
               <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1A365D] text-sm font-bold text-white shadow-sm">{initials}</div>
                 <div className="min-w-0"><h4 className="truncate text-xs font-bold text-[#1A365D]">{userName}</h4><p className="text-[10px] capitalize text-slate-400">{role.replace("-", " ")}</p></div>
               </div>
               {isOwner && <div className="space-y-1"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Preview Role</label><select value={role} onChange={(event) => { onRoleChange(event.target.value as Role); setProfileMenuOpen(false); }} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs font-bold text-[#1A365D] outline-none"><option value="super-admin">Super Admin</option><option value="admin">Clinician</option></select></div>}
               <div className="space-y-1 border-t border-slate-100 pt-2">
-                <button type="button" onClick={() => { setSettingsModalOpen(true); setProfileMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"><Settings size={15} />Workspace Settings</button>
-                <button type="button" onClick={onSignOut} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"><LogOut size={15} />Sign Out</button>
+                <button type="button" onClick={() => { setSettingsModalOpen(true); setProfileMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"><Settings size={15} />Workspace Settings</button>
+                <button type="button" onClick={onSignOut} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"><LogOut size={15} />Sign Out</button>
               </div>
             </div>
           )}
@@ -338,14 +378,29 @@ export function AdminShell({
       {/* Main workspace and responsive app bar. */}
       <div className="min-h-screen min-w-0 flex flex-col md:ml-[92px] lg:ml-[108px]">
         <header className={[
-          "sticky top-0 z-30 px-4 py-3 transition-[background-color,backdrop-filter] duration-200 sm:px-6 lg:px-8 xl:px-10",
-          headerScrolled ? "bg-[#F7F9FC]/80 backdrop-blur-xl" : "bg-[#F7F9FC]",
+          "sticky top-0 z-30 px-4 py-3 transition-[background-color,backdrop-filter] duration-200 sm:px-6 lg:px-8 xl:px-10 border-b border-slate-200/50",
+          headerScrolled ? "bg-[#F7F9FC]/85 backdrop-blur-xl shadow-2xs" : "bg-[#F7F9FC]",
         ].join(" ")}>
-          <div className="flex w-full max-w-[1920px] 2xl:max-w-[2160px] items-center justify-between gap-3">
+          <div className="flex w-full max-w-[1560px] mx-auto items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              {onHeaderBack && <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#1A365D]" onClick={onHeaderBack} aria-label="Go back"><ChevronLeft size={18} /></button>}
+              {onHeaderBack && (
+                <button
+                  type="button"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#1A365D] border border-slate-200/80 shadow-2xs hover:bg-slate-50 transition-colors"
+                  onClick={onHeaderBack}
+                  aria-label="Go back"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+              )}
               <div className="min-w-0">
-                <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{activeTitle}</h1>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{activeTitle}</h1>
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white text-[11px] font-semibold text-slate-600 border border-slate-200/80 shadow-2xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#0D9488]" />
+                    {new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date())}
+                  </span>
+                </div>
                 <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">{activeSubtitle}</p>
               </div>
             </div>
@@ -362,11 +417,11 @@ export function AdminShell({
 
               <div ref={notificationsRef} className="relative">
                 <button type="button" aria-label={"Notifications" + (unreadCount ? ", " + unreadCount + " unread" : "")} title="Notifications" onClick={() => setNotificationsOpen(!notificationsOpen)} className={[
-                  "relative flex h-10 w-10 items-center justify-center rounded-full transition-colors",
-                  notificationsOpen || page === "notifications" ? "text-[#0D9488]" : "text-slate-600 hover:text-[#1A365D]",
+                  "relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white transition-colors shadow-2xs",
+                  notificationsOpen || page === "notifications" ? "text-[#0D9488] border-[#0D9488]/40" : "text-slate-600 hover:text-[#1A365D] hover:bg-slate-50",
                 ].join(" ")}>
-                  <Bell size={19} strokeWidth={1.8} />
-                  {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#0D9488] ring-2 ring-[#F7F9FC]" />}
+                  <Bell size={18} strokeWidth={1.8} />
+                  {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#0D9488] ring-2 ring-white" />}
                 </button>
 
                 {notificationsOpen && <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[min(340px,calc(100vw-24px))] rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200">
@@ -387,8 +442,8 @@ export function AdminShell({
           </div>
         </header>
 
-        <main className="w-full min-w-0 flex-1 px-4 py-5 pb-28 sm:px-6 lg:px-8 xl:px-10 md:pb-8">
-          <div className="w-full max-w-[1920px] 2xl:max-w-[2160px] min-w-0">
+        <main className="w-full min-w-0 flex-1 px-4 py-6 pb-28 sm:px-6 lg:px-8 xl:px-10 md:pb-8">
+          <div className="w-full max-w-[1560px] mx-auto min-w-0">
             {children}
           </div>
         </main>
@@ -396,12 +451,12 @@ export function AdminShell({
 
       {/* Rounded floating mobile dock. More sections expand upward without a sheet or backdrop. */}
       <div ref={mobileNavRef} className="fixed bottom-[calc(env(safe-area-inset-bottom)+12px)] left-1/2 z-40 w-[min(360px,calc(100vw-28px))] -translate-x-1/2 md:hidden">
-        {mobileMoreOpen && mobileMoreNav.length > 0 && <nav aria-label="More admin sections" className="absolute bottom-[calc(100%+10px)] right-0 grid w-[min(340px,calc(100vw-28px))] grid-cols-4 justify-items-center gap-1.5 rounded-[28px] bg-white/95 p-3 shadow-[0_8px_32px_rgba(26,54,93,0.16)] animate-in fade-in slide-in-from-bottom-2 duration-200">
+        {mobileMoreOpen && mobileMoreNav.length > 0 && <nav aria-label="More admin sections" className="absolute bottom-[calc(100%+10px)] right-0 grid w-[min(340px,calc(100vw-28px))] grid-cols-4 justify-items-center gap-1.5 rounded-[28px] bg-white/95 p-3 shadow-[0_8px_32px_rgba(26,54,93,0.16)] border border-slate-100/90 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-3 duration-200">
           {mobileMoreNav.map((item) => {
             const isActive = page === item.key;
             return <button key={item.key} type="button" aria-label={item.label} title={item.label} aria-current={isActive ? "page" : undefined} onClick={() => { onPageChange(item.key); setMobileMoreOpen(false); }} className={[
-              "flex flex-col items-center justify-center p-2 rounded-2xl transition-colors gap-1 text-center w-full",
-              isActive ? "text-[#0D9488] bg-teal-50/80 font-bold" : "text-slate-500 hover:text-[#1A365D] hover:bg-slate-50",
+              "flex flex-col items-center justify-center p-2 rounded-2xl transition-all duration-150 gap-1 text-center w-full active:scale-95",
+              isActive ? "text-[#0D9488] bg-teal-50/80 font-bold scale-102" : "text-slate-500 hover:text-[#1A365D] hover:bg-slate-50",
             ].join(" ")}>
               {getNavIcon(item.key, isActive)}
               <span className="text-[10px] leading-tight line-clamp-1 max-w-[56px] truncate">{item.label.split(" ")[0]}</span>
@@ -413,14 +468,14 @@ export function AdminShell({
           {mobilePrimaryNav.map((item) => {
             const isActive = page === item.key;
             return <button key={item.key} type="button" aria-label={item.label} title={item.label} aria-current={isActive ? "page" : undefined} onClick={() => onPageChange(item.key)} className={[
-              "flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-colors",
-              isActive ? "text-[#0D9488]" : "text-slate-500 hover:text-[#1A365D]",
+              "flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-all duration-200 active:scale-95",
+              isActive ? "text-[#0D9488] scale-105" : "text-slate-500 hover:text-[#1A365D]",
             ].join(" ")}>{getNavIcon(item.key, isActive)}</button>;
           })}
           {mobileMoreNav.length > 0 && <button type="button" aria-label={mobileMoreOpen ? "Hide more navigation" : "Show more navigation"} aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen((open) => !open)} className={[
-            "flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-colors",
+            "flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-all duration-200 active:scale-95",
             mobileMoreOpen ? "text-[#0D9488]" : "text-slate-500 hover:text-[#1A365D]",
-          ].join(" ")}>{mobileMoreOpen ? <ChevronDown size={20} /> : <ChevronUp size={20} />}</button>}
+          ].join(" ")}>{mobileMoreOpen ? <ChevronDown size={20} className="transition-transform duration-200" /> : <ChevronUp size={20} className="transition-transform duration-200" />}</button>}
         </nav>
       </div>
 

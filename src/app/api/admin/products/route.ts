@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../_lib/backend";
+import { ADMIN_SESSION_COOKIE, fetchBackend, noStoreJson, readJson } from "../../_lib/backend";
 
 async function adminToken() {
   return (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const path = `/api/v1/admin/products?${queryString}`;
 
   try {
-    const upstream = await fetch(backendUrl(path), {
+    const upstream = await fetchBackend(path, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         Accept: "application/json",
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const upstream = await fetch(backendUrl("/api/v1/admin/products"), {
+    const upstream = await fetchBackend("/api/v1/admin/products", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,

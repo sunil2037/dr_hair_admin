@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../../_lib/backend";
+import { ADMIN_SESSION_COOKIE, fetchBackend, noStoreJson, readJson } from "../../../_lib/backend";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -12,7 +12,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   if (!id) return noStoreJson({ message: "Product ID is required." }, 400);
 
   try {
-    const upstream = await fetch(backendUrl(`/api/v1/products/${encodeURIComponent(id)}`), {
+    const upstream = await fetchBackend(`/api/v1/products/${encodeURIComponent(id)}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
@@ -36,7 +36,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 
   try {
-    const upstream = await fetch(backendUrl(`/api/v1/admin/products/${encodeURIComponent(id)}`), {
+    const upstream = await fetchBackend(`/api/v1/admin/products/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -59,7 +59,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   if (!id) return noStoreJson({ message: "Product ID is required." }, 400);
 
   try {
-    const upstream = await fetch(backendUrl(`/api/v1/admin/products/${encodeURIComponent(id)}`), {
+    const upstream = await fetchBackend(`/api/v1/admin/products/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,

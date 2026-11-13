@@ -1,6 +1,29 @@
 "use client";
 
-import { Activity, ArrowRight, BellRing, CalendarCheck2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, FileText, HeartPulse, PackageCheck, UsersRound, X } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  BellRing,
+  Building2,
+  CalendarCheck2,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Clock3,
+  FileText,
+  HeartPulse,
+  Mail,
+  MapPin,
+  PackageCheck,
+  Phone,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Stethoscope,
+  UsersRound,
+  X,
+} from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
 import { Avatar, PageHeader, StatusPill } from "../../shared/components/ui";
@@ -214,20 +237,122 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   ];
   const largestQueue = Math.max(1, ...queueBars.map((item) => item.count));
   return <div className="page-wrap dashboard-bento w-full min-w-0">
-    <div className="notice mb-4 flex items-center justify-between gap-3 flex-wrap">
-      <div className="flex items-center gap-2">
-        <Clock3 size={14} className="shrink-0 text-[#0D9488]" />
-        <span><strong>{serverSummary ? "Live workspace" : "Preview workspace"}</strong> · {serverSummary ? "Authoritative clinical metrics and patient directory loaded from Dr. Hair API." : "Patient totals and directory load from the admin API. Queues use session data."}</span>
+    {/* Live Clinical Workspace Status Banner */}
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-teal-100/80 bg-gradient-to-r from-teal-50/70 via-white to-slate-50/60 px-4 py-3 shadow-xs">
+      <div className="flex items-center gap-3">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+        </span>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-700">
+          <span className="font-bold text-[#1A365D] flex items-center gap-1.5">
+            <Sparkles size={13} className="text-teal-600" />
+            {serverSummary ? "Live Clinical Workspace" : "Preview Workspace"}
+          </span>
+          <span className="text-slate-400 hidden sm:inline">·</span>
+          <span className="text-slate-600">
+            {serverSummary
+              ? "Authoritative clinic metrics and patient registry loaded in real-time from Dr. Hair API."
+              : "Patient records & bookings sync with Dr. Hair API. Queues utilize local operational state."}
+          </span>
+        </div>
       </div>
-      <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline-block">
-        {isSuper ? "Super Admin · Dr. Jai Bansal Clinic" : "Clinical Admin"}
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200/70 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#1A365D] shadow-xs">
+          <Building2 size={12} className="text-teal-600" />
+          {isSuper ? "Dr. Jai Bansal Clinic · Super Admin" : "Clinical Admin"}
+        </span>
+      </div>
     </div>
-    <section className="kpi-grid grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Overview metrics">
-      <Kpi icon={<UsersRound size={16} />} label="Patient records" value={!permitted("patients.view") ? "—" : serverSummary?.patients?.total !== undefined ? String(serverSummary.patients.total) : registeredPatientsState === "ready" ? String(registeredPatientTotal) : registeredPatientsState === "loading" ? "…" : "—"} trend={permitted("patients.view") ? (serverSummary ? "Server count" : "Live directory") : "No access"} foot={permitted("patients.view") ? registeredPatientsState === "error" ? "directory unavailable" : "registered patients" : "patient access is off"} onClick={permitted("patients.view") ? () => onNavigate("patients", { anchor: "registered-patients" }) : undefined} />
-      <Kpi icon={<ClipboardCheck size={16} />} label="Assessments to review" value={permitted("assessments.review") ? String(serverSummary?.assessments?.pending ?? reviewPatients.length) : "—"} trend={permitted("assessments.review") ? (serverSummary ? "Server queue" : "Current queue") : "No access"} foot={permitted("assessments.review") ? (serverSummary ? "Live assessments" : "Preview records") : "assessment access is off"} onClick={permitted("assessments.review") ? openReviewQueue : undefined} />
-      <Kpi icon={<CalendarCheck2 size={16} />} label="Clinic visits today" value={permitted("bookings.manage") ? String(serverSummary?.appointments?.today ?? appointmentsToday.length) : "—"} trend={permitted("bookings.manage") ? "Dr. Jai Bansal" : "No access"} foot={permitted("bookings.manage") ? (serverSummary ? "Confirmed & pending" : "Preview schedule") : "appointment access is off"} onClick={permitted("bookings.manage") ? () => onNavigate("bookings", { bookingDate: todayKey }) : undefined} />
-      <Kpi icon={isSuper ? <HeartPulse size={16} /> : <PackageCheck size={16} />} label={isSuper ? "Reports shared with patients" : "Orders to fulfil"} value={permitted(isSuper ? "reports.share" : "orders.manage") ? String(isSuper ? (serverSummary?.reports?.shared ?? reportsReady.length) : ordersToFulfil) : "—"} trend={permitted(isSuper ? "reports.share" : "orders.manage") ? (serverSummary ? "Clinical vault" : "Current queue") : "No access"} foot={permitted(isSuper ? "reports.share" : "orders.manage") ? (serverSummary ? "Shared clinical reports" : "Preview records") : "restricted for this account"} onClick={!isSuper && permitted("orders.manage") ? () => onNavigate("orders") : undefined} />
+
+    {/* Metric KPI Grid */}
+    <section className="kpi-grid mb-5 grid grid-cols-2 gap-3.5 sm:gap-4 lg:grid-cols-4" aria-label="Overview metrics">
+      <Kpi
+        icon={<UsersRound size={18} />}
+        tone="teal"
+        label="Patient records"
+        value={
+          !permitted("patients.view")
+            ? "—"
+            : serverSummary?.patients?.total !== undefined
+            ? String(serverSummary.patients.total)
+            : registeredPatientsState === "ready"
+            ? String(registeredPatientTotal)
+            : registeredPatientsState === "loading"
+            ? "…"
+            : "—"
+        }
+        trend={permitted("patients.view") ? (serverSummary ? "Live API" : "Directory") : "No access"}
+        foot={
+          permitted("patients.view")
+            ? registeredPatientsState === "error"
+              ? "directory unavailable"
+              : "registered patients"
+            : "patient access off"
+        }
+        onClick={permitted("patients.view") ? () => onNavigate("patients", { anchor: "registered-patients" }) : undefined}
+      />
+      <Kpi
+        icon={<ClipboardCheck size={18} />}
+        tone="amber"
+        label="Assessments to review"
+        value={
+          permitted("assessments.review")
+            ? String(serverSummary?.assessments?.pending ?? reviewPatients.length)
+            : "—"
+        }
+        trend={permitted("assessments.review") ? (serverSummary ? "Server queue" : "Current queue") : "No access"}
+        foot={
+          permitted("assessments.review")
+            ? serverSummary
+              ? "live assessments"
+              : "preview records"
+            : "assessment access off"
+        }
+        onClick={permitted("assessments.review") ? openReviewQueue : undefined}
+      />
+      <Kpi
+        icon={<CalendarCheck2 size={18} />}
+        tone="indigo"
+        label="Clinic visits today"
+        value={
+          permitted("bookings.manage")
+            ? String(serverSummary?.appointments?.today ?? appointmentsToday.length)
+            : "—"
+        }
+        trend={permitted("bookings.manage") ? "Dr. Jai Bansal" : "No access"}
+        foot={
+          permitted("bookings.manage")
+            ? serverSummary
+              ? "confirmed & pending"
+              : "today's schedule"
+            : "booking access off"
+        }
+        onClick={permitted("bookings.manage") ? () => onNavigate("bookings", { bookingDate: todayKey }) : undefined}
+      />
+      <Kpi
+        icon={isSuper ? <HeartPulse size={18} /> : <PackageCheck size={18} />}
+        tone="violet"
+        label={isSuper ? "Reports shared" : "Orders to fulfil"}
+        value={
+          permitted(isSuper ? "reports.share" : "orders.manage")
+            ? String(
+                isSuper
+                  ? (serverSummary?.reports?.shared ?? reportsReady.length)
+                  : ordersToFulfil
+              )
+            : "—"
+        }
+        trend={permitted(isSuper ? "reports.share" : "orders.manage") ? (serverSummary ? "Clinical vault" : "Active queue") : "No access"}
+        foot={
+          permitted(isSuper ? "reports.share" : "orders.manage")
+            ? serverSummary
+              ? "shared with patients"
+              : "needs fulfillment"
+            : "restricted access"
+        }
+        onClick={!isSuper && permitted("orders.manage") ? () => onNavigate("orders") : undefined}
+      />
     </section>
 
     <section className="mb-4 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-12" aria-label="Appointments by date">
@@ -286,10 +411,87 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   </div>;
 }
 
-function Kpi({ icon, label, value, trend, foot, onClick }: { icon: React.ReactNode; label: string; value: string; trend: string; foot: string; onClick?: () => void }) {
-  const content = <><div className="kpi-top"><span className="kpi-label">{label}</span><span className="kpi-icon">{icon}</span></div><div className="kpi-value">{value}</div><div className="kpi-foot"><span className={onClick ? "positive" : "negative"}>{trend}</span><span>{foot}</span></div></>;
-  if (!onClick) return <article className="card kpi-card">{content}</article>;
-  return <button type="button" className="card kpi-card w-full text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0D9488]" onClick={onClick} aria-label={`${label}: ${value}. ${foot}. Open related section.`}>{content}</button>;
+function Kpi({
+  icon,
+  label,
+  value,
+  trend,
+  foot,
+  onClick,
+  tone = "teal",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  trend: string;
+  foot: string;
+  onClick?: () => void;
+  tone?: "teal" | "amber" | "indigo" | "violet" | "emerald";
+}) {
+  const toneStyles = {
+    teal: {
+      bg: "bg-teal-50/80 border-teal-100/80 text-teal-700",
+      pill: "bg-teal-50 text-teal-700 border-teal-200/60",
+      accent: "group-hover:text-teal-600",
+    },
+    amber: {
+      bg: "bg-amber-50/80 border-amber-100/80 text-amber-700",
+      pill: "bg-amber-50 text-amber-700 border-amber-200/60",
+      accent: "group-hover:text-amber-600",
+    },
+    indigo: {
+      bg: "bg-indigo-50/80 border-indigo-100/80 text-indigo-700",
+      pill: "bg-indigo-50 text-indigo-700 border-indigo-200/60",
+      accent: "group-hover:text-indigo-600",
+    },
+    violet: {
+      bg: "bg-violet-50/80 border-violet-100/80 text-violet-700",
+      pill: "bg-violet-50 text-violet-700 border-violet-200/60",
+      accent: "group-hover:text-violet-600",
+    },
+    emerald: {
+      bg: "bg-emerald-50/80 border-emerald-100/80 text-emerald-700",
+      pill: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
+      accent: "group-hover:text-emerald-600",
+    },
+  }[tone];
+
+  const content = (
+    <div className="flex h-full flex-col justify-between">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 line-clamp-1">{label}</span>
+        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl border ${toneStyles.bg} shadow-xs`}>
+          {icon}
+        </span>
+      </div>
+      <div className="my-2.5">
+        <span className={`text-3xl font-extrabold tracking-tight text-slate-800 transition-colors ${toneStyles.accent}`}>
+          {value}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-1.5 border-t border-slate-100 pt-2 text-[11px]">
+        <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 font-semibold text-[10px] ${toneStyles.pill}`}>
+          {trend}
+        </span>
+        <span className="text-slate-400 truncate text-[11px] font-medium">{foot}</span>
+      </div>
+    </div>
+  );
+
+  if (!onClick) {
+    return <article className="group card rounded-2xl bg-white p-4 sm:p-5 shadow-xs border border-slate-200/80">{content}</article>;
+  }
+
+  return (
+    <button
+      type="button"
+      className="group card rounded-2xl bg-white p-4 sm:p-5 text-left shadow-xs border border-slate-200/80 transition-all duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0D9488]"
+      onClick={onClick}
+      aria-label={`${label}: ${value}. ${foot}. Open related section.`}
+    >
+      {content}
+    </button>
+  );
 }
 
 function AppointmentCalendar({ bookings, selectedDate, onSelectDate, clinicHolidays }: {
@@ -332,55 +534,77 @@ function AppointmentCalendar({ bookings, selectedDate, onSelectDate, clinicHolid
     onSelectDate(today);
   };
 
-  return <article className="min-w-0 overflow-hidden rounded-[28px] bg-[#1A365D] p-4 text-white shadow-sm sm:p-6 lg:col-span-5 xl:col-span-4" aria-label="Appointment calendar">
-    <div className="flex flex-col gap-2 border-b border-white/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <span className="text-[10px] font-bold uppercase tracking-[.16em] text-[#45c4b5]">OPD schedule</span>
-        <h2 className="mt-0.5 text-lg font-bold tracking-tight">Clinic appointments</h2>
+  return <article className="min-w-0 overflow-hidden rounded-[28px] bg-[#1A365D] p-5 text-white shadow-sm sm:p-6 lg:col-span-5 xl:col-span-4 flex flex-col justify-between" aria-label="Appointment calendar">
+    <div>
+      <div className="flex flex-col gap-2.5 border-b border-white/10 pb-3.5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-[.18em] text-[#45c4b5]">OPD Schedule</span>
+          <h2 className="mt-0.5 text-lg font-bold tracking-tight">Clinic appointments</h2>
+        </div>
+        <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:justify-start">
+          <button type="button" onClick={returnToToday} className="h-8 rounded-full bg-white/10 px-3 text-[11px] font-semibold text-slate-200 transition hover:bg-white/15 hover:text-white">Today</button>
+          <button type="button" onClick={() => moveMonth(-1)} aria-label="Previous month" className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"><ChevronLeft size={17} /></button>
+          <span className="min-w-[104px] text-center text-xs font-semibold text-slate-200" aria-live="polite">{monthTitle}</span>
+          <button type="button" onClick={() => moveMonth(1)} aria-label="Next month" className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"><ChevronRight size={17} /></button>
+        </div>
       </div>
-      <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:justify-start">
-        <button type="button" onClick={returnToToday} className="h-8 rounded-full bg-white/10 px-3 text-[11px] font-semibold text-slate-200 transition hover:bg-white/15 hover:text-white">Today</button>
-        <button type="button" onClick={() => moveMonth(-1)} aria-label="Previous month" className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"><ChevronLeft size={17} /></button>
-        <span className="min-w-[104px] text-center text-xs font-semibold text-slate-200" aria-live="polite">{monthTitle}</span>
-        <button type="button" onClick={() => moveMonth(1)} aria-label="Next month" className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"><ChevronRight size={17} /></button>
+
+      <div className="grid grid-cols-7 py-2.5 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400" aria-hidden="true">
+        {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-y-1.5 text-center">
+        {dayCells.map((day, index) => {
+          if (day === null) return <span aria-hidden="true" key={`blank-${index}`} className="mx-auto h-9 w-9" />;
+          const date = new Date(month.getFullYear(), month.getMonth(), day);
+          const key = localDateKey(date);
+          const count = bookingsByDate.get(key)?.length ?? 0;
+          const isSelected = key === selectedKey;
+          const isToday = key === todayKey;
+          const isClosed = clinicHolidays.includes(key) || date.getDay() === 0;
+          const dayTone = isSelected
+            ? "bg-white font-bold text-[#1A365D] shadow-md scale-105"
+            : isClosed
+              ? "bg-[#F5DEDA] font-semibold text-[#8D514D] hover:bg-[#F0D1CB]"
+              : count > 1
+                ? "bg-[#78C5B6] font-bold text-[#153A58] hover:bg-[#8BD0C2]"
+                : count === 1
+                  ? "bg-[#D8EEE9] font-semibold text-[#1A365D] hover:bg-[#C7E6DF]"
+                  : isToday
+                    ? "ring-1.5 ring-white/70 text-white font-semibold"
+                    : "text-slate-300 hover:bg-white/10";
+          const statusLabel = isClosed ? ", clinic closed" : "";
+          return <button
+            key={key}
+            type="button"
+            aria-label={`${formatFullDate(date)}${count ? `, ${count} appointment${count === 1 ? "" : "s"}` : ", no appointments"}${statusLabel}`}
+            aria-pressed={isSelected}
+            onClick={() => onSelectDate(date)}
+            className={`relative mx-auto grid h-9 w-9 place-items-center rounded-full text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#45c4b5] ${dayTone} ${count > 0 && isClosed && !isSelected ? "ring-2 ring-[#76C6B7]" : ""} ${isSelected && isClosed ? "ring-2 ring-[#E7B9B3]" : ""}`}
+          >
+            {day}
+          </button>;
+        })}
       </div>
     </div>
 
-    <div className="grid grid-cols-7 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400" aria-hidden="true">
-      {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
-    </div>
-    <div className="grid grid-cols-7 gap-y-1 text-center">
-      {dayCells.map((day, index) => {
-        if (day === null) return <span aria-hidden="true" key={`blank-${index}`} className="mx-auto h-9 w-9" />;
-        const date = new Date(month.getFullYear(), month.getMonth(), day);
-        const key = localDateKey(date);
-        const count = bookingsByDate.get(key)?.length ?? 0;
-        const isSelected = key === selectedKey;
-        const isToday = key === todayKey;
-        const isClosed = clinicHolidays.includes(key) || date.getDay() === 0;
-        const dayTone = isSelected
-          ? "bg-white font-bold text-[#1A365D] shadow"
-          : isClosed
-            ? "bg-[#F5DEDA] font-semibold text-[#8D514D] hover:bg-[#F0D1CB]"
-            : count > 1
-              ? "bg-[#78C5B6] font-bold text-[#153A58] hover:bg-[#8BD0C2]"
-              : count === 1
-                ? "bg-[#D8EEE9] font-semibold text-[#1A365D] hover:bg-[#C7E6DF]"
-                : isToday
-                  ? "ring-1 ring-white/70 text-white"
-                  : "text-slate-300";
-        const statusLabel = isClosed ? ", clinic closed" : "";
-        return <button
-          key={key}
-          type="button"
-          aria-label={`${formatFullDate(date)}${count ? `, ${count} appointment${count === 1 ? "" : "s"}` : ", no appointments"}${statusLabel}`}
-          aria-pressed={isSelected}
-          onClick={() => onSelectDate(date)}
-          className={`relative mx-auto grid h-9 w-9 place-items-center rounded-full text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#45c4b5] ${dayTone} ${count > 0 && isClosed && !isSelected ? "ring-2 ring-[#76C6B7]" : ""} ${isSelected && isClosed ? "ring-2 ring-[#E7B9B3]" : ""}`}
-        >
-          {day}
-        </button>;
-      })}
+    {/* Calendar Legend for immediate visual clarity */}
+    <div className="mt-4 pt-3.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-white shadow-xs" />
+        <span className="text-[10px]">Selected</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-[#78C5B6]" />
+        <span className="text-[10px]">Booked</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-[#F5DEDA]" />
+        <span className="text-[10px]">Closed</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full border border-white/80" />
+        <span className="text-[10px]">Today</span>
+      </div>
     </div>
   </article>;
 }
@@ -393,39 +617,107 @@ function SelectedDateAppointments({ bookings, date, onNavigate, onOpenAppointmen
 }) {
   const isToday = localDateKey(date) === localDateKey(new Date());
   const title = isToday ? "Today’s appointments" : `Appointments · ${formatShortDate(date)}`;
+  const confirmedCount = bookings.filter((b) => b.opdStatus === "Confirmed" || b.status === "Active").length;
+  const completedCount = bookings.filter((b) => b.opdStatus === "Completed" || b.status === "Completed").length;
 
   return <article className="card overflow-hidden rounded-[28px] lg:col-span-7 xl:col-span-8 flex flex-col justify-between" aria-live="polite" aria-label={title}>
-    <div className="section-row">
-      <div>
-        <span className="eyebrow">Selected date</span>
-        <h2 className="card-title">{title}</h2>
-        <p className="card-note">{bookings.length} booked patient{bookings.length === 1 ? "" : "s"}</p>
-      </div>
-      <button type="button" className="button button-secondary button-small" onClick={onNavigate}>All bookings <ArrowRight size={13} /></button>
-    </div>
-    {bookings.length ? (
-      <div className="grid gap-2.5 px-4 pb-4 sm:px-5 sm:pb-5 xl:grid-cols-2">
-        {bookings.map((booking) => <AppointmentPatientCard key={booking.id} booking={booking} onClick={() => onOpenAppointment(booking)} />)}
-      </div>
-    ) : (
-      <div className="flex flex-1 flex-col items-center justify-center p-6 sm:p-10 text-center m-4 sm:m-5 rounded-2xl bg-[#F7F9FC]/80 border border-slate-100">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#0D9488] shadow-sm mb-3">
-          <CalendarCheck2 size={22} />
+    <div>
+      <div className="section-row border-b border-slate-100">
+        <div>
+          <span className="eyebrow">Selected date</span>
+          <div className="flex items-center gap-2.5">
+            <h2 className="card-title">{title}</h2>
+            {bookings.length > 0 && (
+              <span className="rounded-full bg-teal-50 border border-teal-100/80 px-2.5 py-0.5 text-xs font-bold text-teal-700">
+                {bookings.length} {bookings.length === 1 ? "booking" : "bookings"}
+              </span>
+            )}
+          </div>
+          <p className="card-note">
+            {bookings.length > 0
+              ? `${completedCount} completed · ${confirmedCount} confirmed OPD visits on schedule`
+              : "Select a date on the calendar to view scheduled consultations"}
+          </p>
         </div>
-        <h3 className="text-sm font-bold text-[#1A365D]">No appointments for this date</h3>
-        <p className="mt-1 text-xs text-slate-500 max-w-sm">
-          No OPD consultations or scalp scans are scheduled for this day. You can view all clinic bookings or select another date on the calendar.
-        </p>
-        <button
-          type="button"
-          onClick={onNavigate}
-          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white text-[#1A365D] border border-slate-200 text-xs font-semibold hover:bg-slate-50 transition shadow-xs"
-        >
-          <span>View all bookings</span>
-          <ArrowRight size={13} />
+        <button type="button" className="button button-secondary button-small" onClick={onNavigate}>
+          All bookings <ArrowRight size={13} />
         </button>
       </div>
-    )}
+
+      {bookings.length ? (
+        <div className="p-4 sm:p-5">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+            {/* Appointments cards column */}
+            <div className={`space-y-3 ${bookings.length <= 2 ? "xl:col-span-7" : "xl:col-span-12"}`}>
+              {bookings.map((booking) => (
+                <AppointmentPatientCard key={booking.id} booking={booking} onClick={() => onOpenAppointment(booking)} />
+              ))}
+            </div>
+
+            {/* OPD Chamber Intelligence & Daily Summary Widget (eliminates large screen empty space) */}
+            {bookings.length <= 2 && (
+              <div className="xl:col-span-5 rounded-2xl border border-teal-100/80 bg-gradient-to-br from-[#F0F7FF]/90 via-white to-teal-50/40 p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+                <div>
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Stethoscope size={13} className="text-teal-600" />
+                      Chamber Intelligence
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                      <CheckCircle2 size={10} /> Active OPD
+                    </span>
+                  </div>
+
+                  <div className="mt-3.5 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Clinician</span>
+                      <span className="font-semibold text-[#1A365D]">Dr. Jai Bansal</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Chamber</span>
+                      <span className="font-medium text-slate-700">Room 101 · Chamber A</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">OPD Hours</span>
+                      <span className="font-medium text-slate-700">10:00 AM – 07:00 PM</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Slot Progress</span>
+                      <span className="font-semibold text-teal-700">
+                        {bookings.length} Booked · {Math.round((completedCount / (bookings.length || 1)) * 100)}% Done
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-slate-200/60 bg-white/80 p-2.5 text-[11px] text-slate-500">
+                  <span className="font-semibold text-[#1A365D] block mb-0.5">Clinical workflow</span>
+                  Click on any booking card to advance OPD status, assign token, or inspect linked patient history.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center p-6 sm:p-10 text-center m-4 sm:m-5 rounded-2xl bg-[#F7F9FC]/80 border border-slate-100">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#0D9488] shadow-sm mb-3">
+            <CalendarCheck2 size={22} />
+          </div>
+          <h3 className="text-sm font-bold text-[#1A365D]">No appointments for this date</h3>
+          <p className="mt-1 text-xs text-slate-500 max-w-sm">
+            No OPD consultations or scalp scans are scheduled for this day. You can view all clinic bookings or select another date on the calendar.
+          </p>
+          <button
+            type="button"
+            onClick={onNavigate}
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white text-[#1A365D] border border-slate-200 text-xs font-semibold hover:bg-slate-50 transition shadow-xs"
+          >
+            <span>View all bookings</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
+    </div>
   </article>;
 }
 
@@ -433,23 +725,51 @@ function AppointmentPatientCard({ booking, onClick }: {
   booking: BookingRecord;
   onClick: () => void;
 }) {
-  const content = <>
-    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#0D9488] shadow-sm"><CalendarCheck2 size={18} /></span>
-    <span className="min-w-0 flex-1">
-      <span className="block truncate text-sm font-semibold text-[#1A365D]">{booking.customer}</span>
-      <span className="mt-0.5 block truncate text-xs text-slate-500">{booking.service}</span>
-      <span className="mt-1 block truncate text-[11px] text-slate-400">{booking.doctorName || "Clinic team"}</span>
-    </span>
-    <span className="flex w-full items-center justify-between gap-3 border-t border-slate-200/70 pt-2 sm:w-auto sm:flex-col sm:items-end sm:border-0 sm:pt-0">
-      <span className="text-xs font-semibold text-[#1A365D]">{formatBookingTime(booking)}</span>
-      <StatusPill status={booking.status} />
-    </span>
-  </>;
-  const cardClass = "flex min-w-0 flex-wrap items-center gap-3 rounded-2xl bg-[#F7F9FC] p-3 text-left sm:flex-nowrap sm:p-4";
+  const content = (
+    <div className="flex w-full min-w-0 flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700 border border-teal-100/80 shadow-xs">
+          <CalendarCheck2 size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-bold text-[#1A365D] group-hover:text-teal-700 transition-colors">
+              {booking.customer}
+            </span>
+            {booking.patientId && (
+              <span className="font-mono text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/60">
+                {booking.patientId}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-slate-500">{booking.service}</p>
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+            <span>{booking.doctorName || "Dr. Jai Bansal"}</span>
+            <span>·</span>
+            <span>{booking.room || "Chamber A"}</span>
+          </div>
+        </div>
+      </div>
 
-  return <button type="button" className={`${cardClass} w-full transition hover:bg-[#EDF3F8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0D9488]`} onClick={onClick} aria-label={`Open appointment details for ${booking.customer}`}>
-    {content}
-  </button>;
+      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2 sm:border-0 sm:pt-0 sm:flex-col sm:items-end">
+        <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-[#1A365D] border border-slate-200/60">
+          {formatBookingTime(booking)}
+        </span>
+        <StatusPill status={booking.status} />
+      </div>
+    </div>
+  );
+
+  return (
+    <button
+      type="button"
+      className="group flex w-full min-w-0 items-center rounded-2xl border border-slate-200/80 bg-white p-3.5 text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0D9488]"
+      onClick={onClick}
+      aria-label={`Open appointment details for ${booking.customer}`}
+    >
+      {content}
+    </button>
+  );
 }
 
 function RegisteredPatients({ patients, totalCount, loadState, onOpenPatient }: {
@@ -458,40 +778,162 @@ function RegisteredPatients({ patients, totalCount, loadState, onOpenPatient }: 
   loadState: "loading" | "ready" | "error";
   onOpenPatient: (patientId: string) => void;
 }) {
-  return <section id="registered-patients" className="card mb-4 overflow-hidden rounded-[28px]" aria-labelledby="registered-patients-title">
-    <div className="section-row">
-      <div>
-        <span className="eyebrow">Patient directory</span>
-        <h2 id="registered-patients-title" className="card-title">Registered patients</h2>
-        <p className="card-note">Select a patient to open their full profile and care history.</p>
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredPatients = useMemo(() => {
+    if (!searchQuery.trim()) return patients;
+    const query = searchQuery.trim().toLowerCase();
+    return patients.filter((patient) =>
+      patient.name.toLowerCase().includes(query) ||
+      patient.patientCode.toLowerCase().includes(query) ||
+      patient.email.toLowerCase().includes(query) ||
+      patient.phone.includes(query) ||
+      patient.city.toLowerCase().includes(query)
+    );
+  }, [patients, searchQuery]);
+
+  return (
+    <section id="registered-patients" className="card mb-5 overflow-hidden rounded-[28px] border border-slate-200/80 shadow-xs" aria-labelledby="registered-patients-title">
+      <div className="section-row border-b border-slate-100">
+        <div>
+          <span className="eyebrow">Patient directory</span>
+          <h2 id="registered-patients-title" className="card-title">Registered patients</h2>
+          <p className="card-note">Search and select a patient to open their comprehensive clinical profile.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Client-side Live Search Filter */}
+          <div className="relative w-full sm:w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, ID, phone…"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 py-1.5 pl-9 pr-8 text-xs text-slate-800 placeholder:text-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100 transition"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                aria-label="Clear search"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          {loadState === "ready" && (
+            <span className="rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-xs font-bold text-[#1A365D]">
+              {totalCount} {totalCount === 1 ? "registered" : "registered"}
+            </span>
+          )}
+        </div>
       </div>
-      {loadState === "ready" && <span className="rounded-full bg-[#F0F7FF] px-3 py-1 text-xs font-semibold text-[#1A365D]">{totalCount} registered</span>}
-    </div>
-    {loadState === "loading" ? <div className="empty-state">Loading registered patients…</div>
-      : loadState === "error" ? <div className="empty-state">Patient directory is unavailable right now.</div>
-      : patients.length ? <div className="table-wrap">
-      <table className="w-full min-w-[700px]">
-        <thead>
-          <tr>
-            <th className="w-[28%]">Patient</th>
-            <th className="w-[24%]">Contact</th>
-            <th className="w-[16%]">Age / gender</th>
-            <th className="w-[14%]">City</th>
-            <th className="w-[14%]">Registered</th>
-            <th className="w-[4%]" />
-          </tr>
-        </thead>
-        <tbody>{patients.map((patient) => <tr key={patient.id}>
-          <td><button type="button" className="person text-left" onClick={() => onOpenPatient(patient.patientCode || patient.id)} aria-label={`Open ${patient.name} patient details`}><Avatar initials={patient.initials} /><span><span className="person-name block">{patient.name}</span><span className="person-sub block">{patient.patientCode || patient.id}</span></span></button></td>
-          <td><span className="block">{patient.email || "No email"}</span><span className="person-sub block">{patient.phone || "No phone"}</span></td>
-          <td>{[patient.age ? `${patient.age} yrs` : "", patient.gender].filter(Boolean).join(" · ") || "—"}</td>
-          <td>{patient.city || "—"}</td>
-          <td>{formatRegistrationDate(patient.createdAt)}</td>
-          <td><button type="button" className="row-action" aria-label={`Open ${patient.name}`} onClick={() => onOpenPatient(patient.patientCode || patient.id)}><ArrowRight size={15} /></button></td>
-        </tr>)}</tbody>
-      </table>
-    </div> : <div className="empty-state">No registered patients yet.</div>}
-  </section>;
+
+      {loadState === "loading" ? (
+        <div className="flex items-center justify-center p-12 text-slate-500 text-xs">
+          <div className="animate-spin rounded-full h-5 w-5 border-2 border-teal-600 border-t-transparent mr-2.5"></div>
+          Loading registered patients registry…
+        </div>
+      ) : loadState === "error" ? (
+        <div className="p-8 text-center text-xs text-rose-600 bg-rose-50/50 m-4 rounded-xl border border-rose-100">
+          Patient directory is currently unavailable from the server.
+        </div>
+      ) : filteredPatients.length ? (
+        <div className="table-wrap">
+          <table className="w-full min-w-[760px]">
+            <thead>
+              <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <th className="py-3 px-4 w-[28%]">Patient</th>
+                <th className="py-3 px-4 w-[24%]">Contact</th>
+                <th className="py-3 px-4 w-[16%]">Demographics</th>
+                <th className="py-3 px-4 w-[14%]">City</th>
+                <th className="py-3 px-4 w-[14%]">Registered</th>
+                <th className="py-3 px-4 w-[4%]" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredPatients.map((patient) => (
+                <tr key={patient.id} className="hover:bg-slate-50/70 transition-colors">
+                  <td className="py-3 px-4">
+                    <button
+                      type="button"
+                      className="group flex items-center gap-3 text-left w-full focus:outline-none"
+                      onClick={() => onOpenPatient(patient.patientCode || patient.id)}
+                      aria-label={`Open ${patient.name} patient profile`}
+                    >
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#1A365D] to-[#2E486D] text-white text-[11px] font-bold shadow-xs">
+                        {patient.initials}
+                      </span>
+                      <div className="min-w-0">
+                        <span className="block truncate text-xs font-bold text-[#1A365D] group-hover:text-teal-600 transition-colors">
+                          {patient.name}
+                        </span>
+                        <span className="mt-0.5 inline-block font-mono text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/60">
+                          {patient.patientCode || patient.id}
+                        </span>
+                      </div>
+                    </button>
+                  </td>
+                  <td className="py-3 px-4 text-xs">
+                    <div className="flex items-center gap-1.5 text-slate-700">
+                      <Mail size={12} className="text-slate-400 shrink-0" />
+                      <span className="truncate">{patient.email || "No email"}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-slate-500 mt-1 text-[11px]">
+                      <Phone size={12} className="text-slate-400 shrink-0" />
+                      <span>{patient.phone || "No phone"}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100/70 px-2.5 py-0.5 text-[11px] font-semibold text-[#1A365D]">
+                      {[patient.age ? `${patient.age} yrs` : "", patient.gender].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-xs text-slate-600">
+                    <div className="flex items-center gap-1">
+                      <MapPin size={12} className="text-slate-400 shrink-0" />
+                      <span>{patient.city || "—"}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-xs text-slate-500 font-medium">
+                    {formatRegistrationDate(patient.createdAt)}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <button
+                      type="button"
+                      className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-teal-600 transition"
+                      aria-label={`Open ${patient.name}`}
+                      onClick={() => onOpenPatient(patient.patientCode || patient.id)}
+                    >
+                      <ArrowRight size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="p-8 text-center text-xs text-slate-500">
+          {searchQuery ? (
+            <div>
+              <p>No registered patients matching &quot;{searchQuery}&quot;.</p>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="mt-2 text-teal-600 hover:underline font-semibold"
+              >
+                Clear search filter
+              </button>
+            </div>
+          ) : (
+            "No registered patients in the directory."
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function AppointmentDetailsDialog({ booking, patient, onClose, onOpenPatient, onAdvance, onManage }: {

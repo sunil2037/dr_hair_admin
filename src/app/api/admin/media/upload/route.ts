@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { ADMIN_SESSION_COOKIE, backendUrl, noStoreJson, readJson } from "../../../_lib/backend";
+import { ADMIN_SESSION_COOKIE, fetchBackend, noStoreJson, readJson } from "../../../_lib/backend";
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization") || "";
@@ -13,17 +13,30 @@ export async function POST(request: Request) {
   }
 
   try {
-    const formData = await request.formData();
+    const incomingFormData = await request.formData();
     const purpose = request.headers.get("x-media-purpose") || "product";
 
-    const upstream = await fetch(backendUrl("/api/v1/media/upload"), {
+    const outgoingFormData = new FormData();
+    for (const [key, value] of incomingFormData.entries()) {
+      if (value instanceof Blob) {
+        const buffer = Buffer.from(await value.arrayBuffer());
+        const fileType = value.type || "image/jpeg";
+        const fileName = (value as File).name || "upload.jpg";
+        const fileBlob = new Blob([buffer], { type: fileType });
+        outgoingFormData.append(key, fileBlob, fileName);
+      } else {
+        outgoingFormData.append(key, value);
+      }
+    }
+
+    const upstream = await fetchBackend("/api/v1/media/upload", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
         "X-Media-Purpose": purpose,
       },
-      body: formData,
+      body: outgoingFormData,
       cache: "no-store",
     });
 

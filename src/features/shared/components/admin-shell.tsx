@@ -1,11 +1,12 @@
 "use client";
 
 import {
-  Activity, Bell, CalendarDays, ChevronDown, ChevronLeft, ChevronUp, Flag,
-  Gauge, LayoutDashboard, LogOut, Package, PanelsTopLeft, Search, Settings,
+  Activity, Bell, CalendarDays, ChevronLeft, Flag,
+  Gauge, LayoutDashboard, LogOut, Package, PanelsTopLeft, Settings,
   ShieldCheck, ShoppingBag, X,
 } from "lucide-react";
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { HeaderSearch } from "./header-search";
 import { visibleNavigation, type PanelFeatureAccess } from "../lib/permissions";
@@ -55,41 +56,6 @@ interface NotificationItem {
   type: "assessment" | "booking" | "report" | "system";
 }
 
-const sampleNotifications: NotificationItem[] = [
-  {
-    id: "notif-1",
-    title: "Sunil Sharma submitted a new hair test assessment",
-    time: "5m ago",
-    read: false,
-    page: "tests",
-    type: "assessment",
-  },
-  {
-    id: "notif-2",
-    title: "Upcoming OPD consultation: Priya Patel at 11:30 AM",
-    time: "32m ago",
-    read: false,
-    page: "bookings",
-    type: "booking",
-  },
-  {
-    id: "notif-3",
-    title: "Clinical report ready for review: Ref #HT-2026-0042",
-    time: "2h ago",
-    read: false,
-    page: "tests",
-    type: "report",
-  },
-  {
-    id: "notif-4",
-    title: "Dr. Jai Bansal completed a trichology case review",
-    time: "Yesterday",
-    read: true,
-    page: "overview",
-    type: "system",
-  },
-];
-
 export function AdminShell({
   role,
   page,
@@ -108,39 +74,29 @@ export function AdminShell({
   onSearchChange,
   onSignOut,
 }: AdminShellProps) {
-  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-
   // Dropdown states
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [navTooltip, setNavTooltip] = useState<{ label: string; left: number; top: number } | null>(null);
 
   // Notifications state
-  const [notifications, setNotifications] = useState<NotificationItem[]>(sampleNotifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const notificationsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
-  const mobileNavRef = useRef<HTMLDivElement>(null);
+  const desktopProfileRef = useRef<HTMLDivElement>(null);
 
   const nav = visibleNavigation(role, panelAccess, permissions);
-  const preferredMobileKeys: PageKey[] = ["overview", "catalog", "bookings", "content"];
-  const mobilePrimaryNav = [
-    ...preferredMobileKeys.map((key) => nav.find((item) => item.key === key)).filter((item) => item !== undefined),
-    ...nav.filter((item) => !preferredMobileKeys.includes(item.key)),
-  ].slice(0, 3);
-  const primaryMobileKeys = mobilePrimaryNav.map((item) => item.key);
-  const mobileMoreNav = nav.filter((item) => !primaryMobileKeys.includes(item.key));
-
   // Close menus on outside click or escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setNotificationsOpen(false);
         setProfileMenuOpen(false);
-        setMobileMoreOpen(false);
         setSettingsModalOpen(false);
       }
     };
@@ -149,11 +105,8 @@ export function AdminShell({
       if (notificationsRef.current && !notificationsRef.current.contains(e.target as Node)) {
         setNotificationsOpen(false);
       }
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+      if (!profileRef.current?.contains(e.target as Node) && !desktopProfileRef.current?.contains(e.target as Node)) {
         setProfileMenuOpen(false);
-      }
-      if (mobileNavRef.current && !mobileNavRef.current.contains(e.target as Node)) {
-        setMobileMoreOpen(false);
       }
     };
 
@@ -266,123 +219,52 @@ export function AdminShell({
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
+  const showNavTooltip = (element: HTMLElement, label: string) => {
+    const rect = element.getBoundingClientRect();
+    setNavTooltip({ label, left: rect.right + 14, top: rect.top + rect.height / 2 });
+  };
+
   return (
     <div className="min-h-screen w-full bg-[#F7F9FC] text-[#1A365D] font-sans antialiased overflow-x-clip">
-      {/* Floating desktop rail: grouped icon capsules with a transparent outer rail. */}
-      <aside
-        id="admin-navigation"
-        className="fixed inset-y-0 left-3 z-40 hidden w-[68px] flex-col items-center justify-between py-5 select-none md:flex lg:left-5"
-        aria-label="Main navigation"
-      >
-        <div className="flex h-11 w-11 items-center justify-center transition-transform duration-300 hover:scale-105">
-          <Image src="/logo-badge.png" alt="Dr. Hair" width={40} height={40} priority className="h-10 w-10 rounded-full object-cover shadow-xs" />
-        </div>
-
-        <nav className="flex max-h-[calc(100vh-220px)] w-fit flex-col items-center gap-1.5 overflow-y-auto rounded-full bg-white/95 p-1.5 shadow-[0_2px_12px_rgba(26,54,93,0.08)] [scrollbar-width:none] border border-slate-100/80 backdrop-blur-md" aria-label="Workspace tabs">
+      <aside id="admin-sidebar" className="fixed inset-y-0 left-3 z-40 hidden w-[68px] flex-col items-center justify-between py-5 lg:left-[clamp(12px,1.2vw,28px)] lg:flex" aria-label="Main navigation">
+        <button type="button" onClick={() => onPageChange("overview")} aria-label="Dr. Hair: open overview" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white p-1 shadow-sm ring-1 ring-teal-100 transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
+          <Image src="/logo-badge.png" alt="" width={44} height={44} priority className="h-10 w-10 rounded-full object-cover" />
+        </button>
+        <nav onScroll={() => setNavTooltip(null)} className="flex max-h-[calc(100vh-220px)] w-fit flex-col items-center gap-1.5 overflow-y-auto overscroll-contain rounded-full border border-slate-100/80 bg-white/95 p-1.5 shadow-[0_2px_12px_rgba(26,54,93,0.08)] backdrop-blur-md [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Workspace tabs">
           {nav.map((item) => {
             const isActive = page === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                aria-label={item.label}
-                aria-current={isActive ? "page" : undefined}
-                title={item.label}
-                onClick={() => onPageChange(item.key)}
-                className={[
-                  "group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all duration-200 ease-out",
-                  isActive
-                    ? "bg-[#F0FDF4]/90 text-[#0D9488] shadow-xs scale-102"
-                    : "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-[#1A365D] hover:scale-105 active:scale-95",
-                ].join(" ")}
-              >
-                {/* Active indicator slide pill on the left */}
-                {isActive && (
-                  <span className="absolute -left-1.5 h-5 w-1 rounded-r-full bg-[#0D9488] shadow-[0_0_8px_rgba(13,148,136,0.5)] transition-all duration-300 ease-out" />
-                )}
-
-                <span className="transition-transform duration-200 ease-out group-hover:scale-110">
-                  {getNavIcon(item.key, isActive)}
-                </span>
-
-                {Boolean(item.count) && (
-                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-[#0D9488] ring-2 ring-white animate-pulse" />
-                )}
-
-                {/* Smooth slide-in tooltip with subtle backdrop blur & arrow */}
-                <span className="pointer-events-none absolute left-[calc(100%+14px)] z-50 flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-[#1A365D] px-3 py-1.5 text-xs font-semibold text-white shadow-xl opacity-0 translate-x-2 transition-all duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0">
-                  {item.label}
-                </span>
-              </button>
-            );
+            return <button key={item.key} type="button" aria-label={item.label} aria-current={isActive ? "page" : undefined} onMouseEnter={(event) => showNavTooltip(event.currentTarget, item.label)} onMouseLeave={() => setNavTooltip(null)} onFocus={(event) => showNavTooltip(event.currentTarget, item.label)} onBlur={() => setNavTooltip(null)} onClick={() => { setNavTooltip(null); onPageChange(item.key); }} className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-[background-color,color,transform] duration-200 ease-out motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 ${isActive ? "bg-teal-50 text-teal-700" : "text-slate-500 hover:translate-x-0.5 hover:bg-slate-50 hover:text-slate-900"}`}>
+              {getNavIcon(item.key, isActive)}
+              {Boolean(item.count) && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-teal-600" />}
+            </button>;
           })}
         </nav>
-
-        <div className="rounded-full bg-white/95 p-1.5 shadow-[0_2px_10px_rgba(26,54,93,0.09)] border border-slate-100/80 backdrop-blur-md">
-          <button
-            type="button"
-            aria-label="Settings"
-            title="Settings"
-            onClick={() => setSettingsModalOpen(true)}
-            className="group relative flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-slate-500 transition-all duration-200 ease-out hover:bg-slate-50 hover:text-[#1A365D] hover:scale-105 active:scale-95"
-          >
-            <span className="transition-transform duration-200 ease-out group-hover:rotate-45">
-              <Settings size={19} strokeWidth={1.75} />
-            </span>
-            <span className="pointer-events-none absolute left-[calc(100%+14px)] z-50 whitespace-nowrap rounded-xl bg-[#1A365D] px-3 py-1.5 text-xs font-semibold text-white opacity-0 translate-x-2 shadow-xl transition-all duration-200 ease-out group-hover:opacity-100 group-hover:translate-x-0">
-              Settings
-            </span>
-          </button>
+        <div className="rounded-full border border-slate-100 bg-white/95 p-1.5 shadow-sm">
+          <button type="button" aria-label="Settings" title="Settings" onClick={() => setSettingsModalOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-full text-slate-500 transition-colors duration-200 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"><Settings size={19} /></button>
         </div>
-
-        <div ref={profileRef} className="relative flex flex-col items-center gap-1.5 rounded-full bg-white/95 p-1.5 shadow-[0_2px_10px_rgba(26,54,93,0.09)] border border-slate-100/80 backdrop-blur-md">
-          <button
-            type="button"
-            aria-label={"Profile: " + userName}
-            title={userName}
-            onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-            className="group flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-transform duration-200 hover:scale-105 active:scale-95"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#1A365D] text-xs font-bold text-white shadow-sm transition-all duration-200 group-hover:ring-2 group-hover:ring-[#0D9488]">
-              {initials}
-            </span>
+        <div ref={desktopProfileRef} className="relative flex flex-col items-center gap-1.5 rounded-full border border-slate-100/80 bg-white/95 p-1.5 shadow-sm backdrop-blur-md">
+          <button type="button" aria-label={`Profile: ${userName}`} title={userName} aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)} className="flex h-11 w-11 items-center justify-center rounded-full transition-transform duration-200 hover:scale-105 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1A365D] text-xs font-bold text-white shadow-sm">{initials}</span>
           </button>
-          <button
-            type="button"
-            aria-label="Sign out"
-            title="Sign out"
-            onClick={onSignOut}
-            className="group flex h-10 w-11 items-center justify-center rounded-full bg-transparent text-slate-400 transition-all duration-200 hover:bg-red-50/60 hover:text-red-600 hover:scale-105 active:scale-95"
-          >
-            <span className="transition-transform duration-200 group-hover:-translate-x-0.5">
-              <LogOut size={18} strokeWidth={1.75} />
-            </span>
-          </button>
-
-          {profileMenuOpen && (
-            <div className="absolute bottom-0 left-[calc(100%+14px)] z-50 w-64 space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xl animate-in fade-in slide-in-from-left-3 duration-200">
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1A365D] text-sm font-bold text-white shadow-sm">{initials}</div>
-                <div className="min-w-0"><h4 className="truncate text-xs font-bold text-[#1A365D]">{userName}</h4><p className="text-[10px] capitalize text-slate-400">{role.replace("-", " ")}</p></div>
-              </div>
-              {isOwner && <div className="space-y-1"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Preview Role</label><select value={role} onChange={(event) => { onRoleChange(event.target.value as Role); setProfileMenuOpen(false); }} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs font-bold text-[#1A365D] outline-none"><option value="super-admin">Super Admin</option><option value="admin">Clinician</option></select></div>}
-              <div className="space-y-1 border-t border-slate-100 pt-2">
-                <button type="button" onClick={() => { setSettingsModalOpen(true); setProfileMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"><Settings size={15} />Workspace Settings</button>
-                <button type="button" onClick={onSignOut} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"><LogOut size={15} />Sign Out</button>
-              </div>
-            </div>
-          )}
+          <button type="button" aria-label="Sign out" title="Sign out" onClick={onSignOut} className="flex h-10 w-11 items-center justify-center rounded-full text-slate-400 transition-colors duration-200 hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"><LogOut size={18} /></button>
+          {profileMenuOpen && <div className="absolute bottom-0 left-[calc(100%+14px)] z-50 w-64 space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xl animate-in fade-in slide-in-from-left-3 duration-200 motion-reduce:animate-none">
+            <div className="border-b border-slate-100 pb-3"><h4 className="truncate text-xs font-bold text-[#1A365D]">{userName}</h4><p className="text-[10px] capitalize text-slate-400">{role.replace("-", " ")}</p></div>
+            {isOwner && <div className="space-y-1"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Preview role</label><select value={role} onChange={(event) => { onRoleChange(event.target.value as Role); setProfileMenuOpen(false); }} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs font-bold text-[#1A365D] outline-none"><option value="super-admin">Super Admin</option><option value="admin">Clinician</option></select></div>}
+            <div className="space-y-1 border-t border-slate-100 pt-2"><button type="button" onClick={() => { setSettingsModalOpen(true); setProfileMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"><Settings size={15} />Workspace settings</button><button type="button" onClick={onSignOut} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"><LogOut size={15} />Sign out</button></div>
+          </div>}
         </div>
       </aside>
-
       {/* Main workspace and responsive app bar. */}
-      <div className="min-h-screen min-w-0 flex flex-col md:ml-[92px] lg:ml-[108px]">
+      <div className="min-h-screen min-w-0 flex flex-col lg:ml-[clamp(92px,5.6vw,124px)]">
         <header className={[
           "sticky top-0 z-30 px-4 py-3 transition-[background-color,backdrop-filter] duration-200 sm:px-6 lg:px-8 xl:px-10 border-b border-slate-200/50",
           headerScrolled ? "bg-[#F7F9FC]/85 backdrop-blur-xl shadow-2xs" : "bg-[#F7F9FC]",
         ].join(" ")}>
           <div className="flex w-full max-w-[1560px] mx-auto items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5 shadow-sm ring-1 ring-teal-100 lg:hidden" aria-hidden="true">
+                <Image src="/logo-badge.png" alt="" width={36} height={36} priority className="h-9 w-9 rounded-full object-cover" />
+              </span>
               {onHeaderBack && (
                 <button
                   type="button"
@@ -395,13 +277,15 @@ export function AdminShell({
               )}
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{activeTitle}</h1>
+                  {page === "overview"
+                    ? <h1 className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">{activeTitle}</h1>
+                    : <span className="text-lg font-bold leading-tight tracking-tight text-[#1A365D] sm:text-2xl">Dr. Hair</span>}
                   <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white text-[11px] font-semibold text-slate-600 border border-slate-200/80 shadow-2xs">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#0D9488]" />
                     {new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date())}
                   </span>
                 </div>
-                <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">{activeSubtitle}</p>
+                <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">{page === "overview" ? activeSubtitle : "Clinic admin"}</p>
               </div>
             </div>
 
@@ -434,50 +318,65 @@ export function AdminShell({
                       <span className="flex items-start justify-between gap-2"><span className="text-xs font-medium leading-snug text-slate-800">{notification.title}</span>{!notification.read && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#0D9488]" />}</span>
                       <span className="block text-[10px] font-semibold text-slate-400">{notification.time}</span>
                     </button>)}
+                    {notifications.length === 0 && <p className="py-4 text-center text-xs text-slate-500">No clinic alerts right now.</p>}
                   </div>
                   <div className="border-t border-slate-100 pt-2"><button type="button" onClick={() => { onPageChange("notifications"); setNotificationsOpen(false); }} className="block w-full py-1.5 text-center text-xs font-bold text-[#1A365D] hover:text-[#0D9488]">View all notifications →</button></div>
+                </div>}
+              </div>
+
+              <div ref={profileRef} className="relative lg:hidden">
+                <button type="button" aria-label={`Profile: ${userName}`} aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200/80 bg-white text-xs font-bold text-[#1A365D] shadow-2xs transition-colors hover:border-[#0D9488]/40 hover:text-[#0D9488]">
+                  {initials}
+                </button>
+                {profileMenuOpen && <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-64 space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xl animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="border-b border-slate-100 pb-3">
+                    <h4 className="truncate text-xs font-bold text-[#1A365D]">{userName}</h4>
+                    <p className="text-[10px] capitalize text-slate-400">{role.replace("-", " ")}</p>
+                  </div>
+                  {isOwner && <div className="space-y-1"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Preview role</label><select value={role} onChange={(event) => { onRoleChange(event.target.value as Role); setProfileMenuOpen(false); }} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs font-bold text-[#1A365D] outline-none"><option value="super-admin">Super Admin</option><option value="admin">Clinician</option></select></div>}
+                  <div className="space-y-1 border-t border-slate-100 pt-2">
+                    <button type="button" onClick={() => { setSettingsModalOpen(true); setProfileMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"><Settings size={15} />Workspace settings</button>
+                    <button type="button" onClick={onSignOut} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"><LogOut size={15} />Sign out</button>
+                  </div>
                 </div>}
               </div>
             </div>
           </div>
         </header>
 
-        <main className="w-full min-w-0 flex-1 px-4 py-6 pb-28 sm:px-6 lg:px-8 xl:px-10 md:pb-8">
+        <nav id="admin-navigation" aria-label="Workspace tabs" className="sticky top-[73px] z-20 border-b border-slate-200/70 bg-[#F7F9FC]/95 px-4 py-2 backdrop-blur-xl sm:px-6 lg:hidden">
+          <div className="mx-auto flex w-full max-w-[1560px] min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Admin sections">
+            {nav.map((item) => {
+              const isActive = page === item.key;
+              return <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => onPageChange(item.key)}
+                className={[
+                  "inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-semibold transition-colors duration-150 sm:px-3.5 sm:text-sm",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0D9488] focus-visible:ring-offset-2",
+                  isActive ? "bg-white text-[#0D9488] shadow-xs ring-1 ring-slate-200/80" : "text-slate-600 hover:bg-white/70 hover:text-[#1A365D]",
+                ].join(" ")}
+              >
+                {getNavIcon(item.key, isActive)}
+                <span>{item.label}</span>
+                {Boolean(item.count) && <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-[#0D9488]" />}
+              </button>;
+            })}
+          </div>
+        </nav>
+
+        <main className="w-full min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
           <div className="w-full max-w-[1560px] mx-auto min-w-0">
             {children}
           </div>
         </main>
       </div>
 
-      {/* Rounded floating mobile dock. More sections expand upward without a sheet or backdrop. */}
-      <div ref={mobileNavRef} className="fixed bottom-[calc(env(safe-area-inset-bottom)+12px)] left-1/2 z-40 w-[min(360px,calc(100vw-28px))] -translate-x-1/2 md:hidden">
-        {mobileMoreOpen && mobileMoreNav.length > 0 && <nav aria-label="More admin sections" className="absolute bottom-[calc(100%+10px)] right-0 grid w-[min(340px,calc(100vw-28px))] grid-cols-4 justify-items-center gap-1.5 rounded-[28px] bg-white/95 p-3 shadow-[0_8px_32px_rgba(26,54,93,0.16)] border border-slate-100/90 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-3 duration-200">
-          {mobileMoreNav.map((item) => {
-            const isActive = page === item.key;
-            return <button key={item.key} type="button" aria-label={item.label} title={item.label} aria-current={isActive ? "page" : undefined} onClick={() => { onPageChange(item.key); setMobileMoreOpen(false); }} className={[
-              "flex flex-col items-center justify-center p-2 rounded-2xl transition-all duration-150 gap-1 text-center w-full active:scale-95",
-              isActive ? "text-[#0D9488] bg-teal-50/80 font-bold scale-102" : "text-slate-500 hover:text-[#1A365D] hover:bg-slate-50",
-            ].join(" ")}>
-              {getNavIcon(item.key, isActive)}
-              <span className="text-[10px] leading-tight line-clamp-1 max-w-[56px] truncate">{item.label.split(" ")[0]}</span>
-            </button>;
-          })}
-        </nav>}
-
-        <nav aria-label="Primary mobile navigation" className="flex items-center justify-around gap-1 rounded-full border border-slate-200/80 bg-white/95 p-2 shadow-[0_4px_22px_rgba(26,54,93,0.14)] backdrop-blur-xl">
-          {mobilePrimaryNav.map((item) => {
-            const isActive = page === item.key;
-            return <button key={item.key} type="button" aria-label={item.label} title={item.label} aria-current={isActive ? "page" : undefined} onClick={() => onPageChange(item.key)} className={[
-              "flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-all duration-200 active:scale-95",
-              isActive ? "text-[#0D9488] scale-105" : "text-slate-500 hover:text-[#1A365D]",
-            ].join(" ")}>{getNavIcon(item.key, isActive)}</button>;
-          })}
-          {mobileMoreNav.length > 0 && <button type="button" aria-label={mobileMoreOpen ? "Hide more navigation" : "Show more navigation"} aria-expanded={mobileMoreOpen} onClick={() => setMobileMoreOpen((open) => !open)} className={[
-            "flex h-11 w-11 items-center justify-center rounded-full bg-transparent transition-all duration-200 active:scale-95",
-            mobileMoreOpen ? "text-[#0D9488]" : "text-slate-500 hover:text-[#1A365D]",
-          ].join(" ")}>{mobileMoreOpen ? <ChevronDown size={20} className="transition-transform duration-200" /> : <ChevronUp size={20} className="transition-transform duration-200" />}</button>}
-        </nav>
-      </div>
+      {navTooltip && createPortal(<div role="tooltip" className="pointer-events-none fixed z-[60] -translate-y-1/2 whitespace-nowrap rounded-xl bg-[#1A365D] px-3 py-1.5 text-xs font-semibold text-white shadow-lg animate-in fade-in slide-in-from-left-1 duration-150 motion-reduce:animate-none" style={{ left: navTooltip.left, top: navTooltip.top }}>{navTooltip.label}</div>, document.body)}
 
       {/* ==================================================================== */}
       {/* 5. WORKSPACE SETTINGS MODAL                                          */}

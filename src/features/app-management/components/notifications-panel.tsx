@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, CalendarClock, ImageIcon, Link2, Send, Sparkles, X } from "lucide-react";
+import { BellRing, CalendarClock, ImageIcon, Link2, Send, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StatusPill } from "../../shared/components/ui";
 
@@ -24,19 +24,8 @@ interface NotificationRecord {
   };
 }
 
-const initialNotifications: NotificationRecord[] = [
-  { id: "NTF-204", title: "Your weekly progress check-in", message: "Take a moment to share how your hair care routine is going this week.", audience: "Active patients", status: "Sent", createdAt: "Today" },
-  { id: "NTF-203", title: "Your report is ready", message: "A new report is available in your Dr. Hair app.", audience: "Patients with a shared report", status: "Sent", createdAt: "Yesterday" },
-];
-
-const audienceCounts: Record<Audience, number> = {
-  "All app users": 1248,
-  "Active patients": 384,
-  "Patients with a shared report": 12,
-};
-
 export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: string) => void; onAudit: (action: string, target: string) => void }) {
-  const [records, setRecords] = useState<NotificationRecord[]>(initialNotifications);
+  const [records, setRecords] = useState<NotificationRecord[]>([]);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -70,7 +59,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
     fetch("/api/admin/notifications?page=1&limit=20")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.data?.items && Array.isArray(data.data.items) && data.data.items.length > 0) {
+        if (data?.data?.items && Array.isArray(data.data.items)) {
           const mapped: NotificationRecord[] = data.data.items.map((item: Record<string, unknown>) => {
             const rawStatus = String(item.status || "Sent");
             const status: NotificationStatus =
@@ -98,6 +87,10 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
   }, []);
 
   const submit = async () => {
+    if (liveAudienceCounts[audience] <= 0) {
+      onToast("No eligible patients were found for this audience. Refresh the audience before sending.");
+      return;
+    }
     const cleanTitle = title.trim();
     const cleanMessage = message.trim();
     if (cleanTitle.length < 3 || cleanTitle.length > 60) {
@@ -184,11 +177,12 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
 
   const cancel = async (record: NotificationRecord) => {
     try {
-      await fetch("/api/admin/notifications", {
+      const res = await fetch("/api/admin/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "cancel", campaign_id: record.id }),
       });
+      if (!res.ok) throw new Error("Cancellation failed");
       setRecords((current) => current.map((item) => (item.id === record.id ? { ...item, status: "Cancelled" } : item)));
       onAudit("cancelled app notification", record.title);
       onToast("Scheduled notification cancelled.");
@@ -199,13 +193,6 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
 
   return (
     <div className="space-y-4">
-      <div className="notice border border-teal-200/60 bg-teal-50/60 text-teal-800">
-        <Sparkles size={14} className="text-teal-600" />
-        <span>
-          Firebase Cloud Messaging is active. Broadcasts and targeted pushes trigger real-time device notifications and in-app inbox messages with dynamic deep linking.
-        </span>
-      </div>
-
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,.9fr)]">
         <section className="card p-4 sm:p-5">
           <div className="section-row !p-0 !pb-4">
@@ -269,7 +256,7 @@ export function NotificationsPanel({ onToast, onAudit }: { onToast: (message: st
                   <option>Active patients</option>
                   <option>Patients with a shared report</option>
                 </select>
-                <small>Targets: {(liveAudienceCounts[audience] ?? audienceCounts[audience]).toLocaleString("en-IN")} patients</small>
+                <small>Targets: {liveAudienceCounts[audience].toLocaleString("en-IN")} patients</small>
               </label>
 
               <label className="field">

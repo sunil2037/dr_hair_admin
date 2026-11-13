@@ -1,6 +1,6 @@
 "use client";
 
-import { BellRing, LayoutGrid, Megaphone, RefreshCw, ShieldCheck, SlidersHorizontal, Video, type LucideIcon } from "lucide-react";
+import { BellRing, Megaphone, RefreshCw, ShieldCheck, SlidersHorizontal, Video, type LucideIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AdminPermissionId, FeatureRecord, Role } from "../../shared/types";
 import type { PanelFeatureAccess } from "../../shared/lib/permissions";
@@ -52,12 +52,11 @@ export function AppManagement({
   const selectedMeta = tabMeta.find((tab) => tab.id === resolvedTab);
   return <div className="page-wrap w-full min-w-0">
     <PageHeader eyebrow="Dr. Hair · App experience" title="App Management" description="Manage what patients see, receive, and need to access the Dr. Hair app." />
-    <div className="notice mb-4"><LayoutGrid size={14} /><span>Video uploads, YouTube links, and video publishing are connected to the backend. Banners, patient stories, notifications, feature settings, and app update policies still use local previews until their APIs are connected.</span></div>
     <div className="commerce-tabs app-management-tabs" role="tablist" aria-label="App management sections">
       {availableTabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={resolvedTab === id} className={`commerce-tab ${resolvedTab === id ? "selected" : ""}`} onClick={() => setActiveTab(id)}><Icon size={15} />{label}</button>)}
     </div>
     {selectedMeta && <p className="mb-4 mt-3 text-[11px] leading-5 text-slate-500">{selectedMeta.description}</p>}
-    <section key={resolvedTab} aria-label={selectedMeta?.label ?? "App management"}>
+    <section aria-label={selectedMeta?.label ?? "App management"}>
       {resolvedTab === "content" && <ContentManagement mode="content" scope="content" embedded onToast={onToast} permissions={permissions} onAudit={onAudit} />}
       {resolvedTab === "home" && <ContentManagement mode="content" scope="home" embedded availableOffers={coupons} onToast={onToast} permissions={permissions} onAudit={onAudit} />}
       {resolvedTab === "notifications" && <NotificationsPanel onToast={onToast} onAudit={onAudit} />}

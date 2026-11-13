@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { Avatar, Modal, PageHeader, StatusPill, TableToolbar } from "../../shared/components/ui";
 import { formatCurrency } from "../../commerce/lib/format";
-import { orders as initialOrders } from "../../shared/lib/demo-data";
 import type { OrderFulfillmentStatus, OrderPaymentStatus, OrderRecord } from "../../shared/types";
 import { ReceivedPaymentsPanel } from "./received-payments-panel";
 
@@ -98,12 +97,10 @@ function dateFromOrder(order: OrderRecord) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function timestamp() {
-  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
-}
-
-function appendTimeline(order: OrderRecord, label: string): OrderRecord["timeline"] {
-  return [...(order.timeline ?? []), { label, date: timestamp(), done: true }];
+async function requireSuccess(res: Response) {
+  if (res.ok) return;
+  const body = await res.json().catch(() => ({}));
+  throw new Error(body.message || "Order service could not save this change.");
 }
 
 function progressFor(order: OrderRecord): string {
@@ -140,7 +137,7 @@ function canStartPreparing(order: OrderRecord) {
 
 export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExport = false }: { globalSearch: string; onToast: (message: string) => void; onAudit?: (action: string, target: string) => void; canExport?: boolean }) {
   const [topTab, setTopTab] = useState<"orders" | "payments">("orders");
-  const [orders, setOrders] = useState<OrderRecord[]>(initialOrders);
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [tab, setTab] = useState<QueueTab>("All orders");
   const [query, setQuery] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("Any payment");
@@ -215,8 +212,6 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
   }), [normalizedOrders, tab, search, paymentFilter, productFilter, couponFilter, dateCutoff]);
   const eligibleSelected = filteredOrders.filter((order) => selectedIds.includes(order.id) && canStartPreparing(order));
 
-  const updateOrder = (id: string, updater: (order: OrderRecord) => OrderRecord) => setOrders((current) => current.map((order) => order.id === id ? updater(normalizeOrder(order)) : order));
-
   const startPreparation = async (order: OrderRecord) => {
     if (!canStartPreparing(order)) {
       onToast("Payment must be confirmed before fulfilment can start.");
@@ -228,16 +223,13 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "Preparing" }),
       });
-      if (res.ok) {
-        await reloadOrders();
-        onAudit("started fulfilment for", order.id);
-        onToast(`${order.id} moved to Preparing.`);
-        return;
-      }
-    } catch {}
-    updateOrder(order.id, (current) => ({ ...current, status: "Preparing", timeline: appendTimeline(current, "Fulfilment started · preparing order") }));
-    onAudit("started fulfilment for", order.id);
-    onToast(`${order.id} moved to Preparing.`);
+      await requireSuccess(res);
+      await reloadOrders();
+      onAudit("started fulfilment for", order.id);
+      onToast(`${order.id} moved to Preparing.`);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Could not start fulfilment.");
+    }
   };
 
   const createShiprocketShipment = async (order: OrderRecord) => {
@@ -283,16 +275,13 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
             tracking_number: dispatchDetails.trackingNumber.trim(),
           }),
         });
-        if (res.ok) {
-          await reloadOrders();
-          onAudit("shipped order", selectedOrder.id);
-          onToast(`${selectedOrder.id} marked as shipped.`);
-          return;
-        }
-      } catch {}
-      updateOrder(selectedOrder.id, (current) => ({ ...current, status: "Shipped", courier: dispatchDetails.courier.trim(), trackingNumber: dispatchDetails.trackingNumber.trim(), timeline: appendTimeline(current, `Shipped · ${dispatchDetails.courier.trim()} · ${dispatchDetails.trackingNumber.trim()}`) }));
-      onAudit("shipped order", selectedOrder.id);
-      onToast(`${selectedOrder.id} marked as shipped.`);
+        await requireSuccess(res);
+        await reloadOrders();
+        onAudit("shipped order", selectedOrder.id);
+        onToast(`${selectedOrder.id} marked as shipped.`);
+      } catch (error) {
+        onToast(error instanceof Error ? error.message : "Could not ship order.");
+      }
       return;
     }
     if (selectedOrder.status === "Shipped") {
@@ -302,16 +291,13 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "Delivered" }),
         });
-        if (res.ok) {
-          await reloadOrders();
-          onAudit("marked order delivered", selectedOrder.id);
-          onToast(`${selectedOrder.id} marked delivered.`);
-          return;
-        }
-      } catch {}
-      updateOrder(selectedOrder.id, (current) => ({ ...current, status: "Delivered", timeline: appendTimeline(current, "Marked delivered") }));
-      onAudit("marked order delivered", selectedOrder.id);
-      onToast(`${selectedOrder.id} marked delivered.`);
+        await requireSuccess(res);
+        await reloadOrders();
+        onAudit("marked order delivered", selectedOrder.id);
+        onToast(`${selectedOrder.id} marked delivered.`);
+      } catch (error) {
+        onToast(error instanceof Error ? error.message : "Could not mark order delivered.");
+      }
       return;
     }
     setSelectedOrderId(null);
@@ -325,23 +311,15 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: cancelReason }),
       });
-      if (res.ok) {
-        await reloadOrders();
-        onAudit("cancelled order", `${cancelOrder.id} · ${cancelReason}`);
-        onToast("Order cancelled and inventory released.");
-        setCancelOrder(null);
-        setSelectedOrderId(null);
-        return;
-      }
-    } catch {}
-    updateOrder(cancelOrder.id, (current) => ({
-      ...current, status: "Cancelled", cancellationReason: cancelReason,
-      timeline: appendTimeline(current, `Cancelled · ${cancelReason}`),
-    }));
-    onAudit("cancelled order", `${cancelOrder.id} · ${cancelReason}`);
-    onToast("Cancellation recorded.");
-    setCancelOrder(null);
-    setSelectedOrderId(null);
+      await requireSuccess(res);
+      await reloadOrders();
+      onAudit("cancelled order", `${cancelOrder.id} · ${cancelReason}`);
+      onToast("Order cancelled and inventory released.");
+      setCancelOrder(null);
+      setSelectedOrderId(null);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Could not cancel order.");
+    }
   };
 
   const confirmReturn = async () => {
@@ -352,23 +330,15 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "Return requested" }),
       });
-      if (res.ok) {
-        await reloadOrders();
-        onAudit("recorded return request", `${returnOrder.id} · ${returnReason}`);
-        onToast("Return request saved.");
-        setReturnOrder(null);
-        setSelectedOrderId(null);
-        return;
-      }
-    } catch {}
-    updateOrder(returnOrder.id, (current) => ({
-      ...current, status: "Return requested", returnReason,
-      timeline: appendTimeline(current, `Return requested · ${returnReason}`),
-    }));
-    onAudit("recorded return request", `${returnOrder.id} · ${returnReason}`);
-    onToast("Return request saved.");
-    setReturnOrder(null);
-    setSelectedOrderId(null);
+      await requireSuccess(res);
+      await reloadOrders();
+      onAudit("recorded return request", `${returnOrder.id} · ${returnReason}`);
+      onToast("Return request saved.");
+      setReturnOrder(null);
+      setSelectedOrderId(null);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Could not save return request.");
+    }
   };
 
   const confirmRefund = async () => {
@@ -386,39 +356,33 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount, reason: refundReason, restock_inventory: true }),
       });
-      if (res.ok) {
-        await reloadOrders();
-        onAudit("recorded refund", `${refundOrder.id} · ${formatCurrency(amount)}`);
-        onToast(`${formatCurrency(amount)} refund processed and stock restored.`);
-        setRefundOrder(null);
-        setSelectedOrderId(null);
-        return;
-      }
-    } catch {}
-    const nextRefund = previousRefund + amount;
-    const fullRefund = nextRefund >= parseAmount(refundOrder);
-    updateOrder(refundOrder.id, (current) => ({
-      ...current, refundAmount: nextRefund, refundReason,
-      paymentStatus: fullRefund ? "Refunded" : "Partially refunded",
-      status: fullRefund && current.status !== "Cancelled" ? "Refunded" : current.status,
-      timeline: appendTimeline(current, `${fullRefund ? "Refunded" : "Partially refunded"} · ${formatCurrency(amount)} · ${refundReason}`),
-    }));
-    onAudit("recorded refund", `${refundOrder.id} · ${formatCurrency(amount)}`);
-    onToast(`${formatCurrency(amount)} refund recorded.`);
-    setRefundOrder(null);
-    setSelectedOrderId(null);
+      await requireSuccess(res);
+      await reloadOrders();
+      onAudit("recorded refund", `${refundOrder.id} · ${formatCurrency(amount)}`);
+      onToast(`${formatCurrency(amount)} refund processed and stock restored.`);
+      setRefundOrder(null);
+      setSelectedOrderId(null);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Could not process refund.");
+    }
   };
 
-  const moveSelectedToPreparing = () => {
-    const selected = new Set(eligibleSelected.map((order) => order.id));
-    if (!selected.size) return;
-    setOrders((current) => current.map((rawOrder) => {
-      const order = normalizeOrder(rawOrder);
-      return selected.has(order.id) ? { ...order, status: "Preparing", timeline: appendTimeline(order, "Fulfilment started · bulk action") } : rawOrder;
+  const moveSelectedToPreparing = async () => {
+    const selected = eligibleSelected.map((order) => order.id);
+    if (!selected.length) return;
+    const results = await Promise.allSettled(selected.map(async (id) => {
+      const res = await fetch(`/api/admin/orders/${id}/fulfillment`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Preparing" }),
+      });
+      await requireSuccess(res);
     }));
-    onAudit("started bulk fulfilment for", `${selected.size} orders`);
-    setSelectedIds((current) => current.filter((id) => !selected.has(id)));
-    onToast(`${selected.size} paid order${selected.size === 1 ? "" : "s"} moved to Preparing.`);
+    const saved = selected.filter((_, index) => results[index].status === "fulfilled");
+    await reloadOrders();
+    if (saved.length) onAudit("started bulk fulfilment for", `${saved.length} orders`);
+    setSelectedIds((current) => current.filter((id) => !saved.includes(id)));
+    onToast(`${saved.length} of ${selected.length} orders moved to Preparing.`);
   };
 
   const exportCsv = () => {
@@ -430,8 +394,8 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
     const rows = filteredOrders.map((order) => [order.id, order.customer, order.customerEmail ?? "", order.date, order.item, String(parseAmount(order)), order.paymentStatus ?? "", order.status, order.couponCode ?? "", order.courier ?? "", order.trackingNumber ?? ""]);
     const csv = [header, ...rows].map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a"); link.href = url; link.download = "dr-hair-orders-preview.csv"; link.click(); URL.revokeObjectURL(url);
-    onToast(`Exported ${filteredOrders.length} filtered sample orders.`);
+    const link = document.createElement("a"); link.href = url; link.download = "dr-hair-orders.csv"; link.click(); URL.revokeObjectURL(url);
+    onToast(`Exported ${filteredOrders.length} filtered orders.`);
   };
 
   const changeDateFilter = (value: OrderDateFilter) => {
@@ -489,7 +453,6 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
       <ReceivedPaymentsPanel onToast={onToast} />
     ) : (
       <>
-        <div className="notice operations-notice"><Activity size={14} /><span>Sample order records only. Status changes, refunds, and exports are local previews; payments, notifications, and courier updates require commerce APIs.</span></div>
 
         <div className="kpi-grid order-queue-metrics grid grid-cols-2 gap-3 lg:grid-cols-4">
           <QueueMetric icon={<PackageCheck size={15} />} label="New · paid" value={String(normalizedOrders.filter((order) => order.status === "New" && order.paymentStatus === "Paid").length)} foot="Ready to begin fulfilment" tone="blue" />
@@ -499,7 +462,7 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
         </div>
 
         <section className="card order-workspace-card">
-          <div className="order-workspace-heading"><div><h2 className="card-title">Fulfilment queue</h2><p className="card-note">Select a queue to focus the work that needs doing next.</p></div><span className="small-caption">{normalizedOrders.length} sample orders</span></div>
+          <div className="order-workspace-heading"><div><h2 className="card-title">Fulfilment queue</h2><p className="card-note">Select a queue to focus the work that needs doing next.</p></div><span className="small-caption">{normalizedOrders.length} orders</span></div>
           <div className="order-queue-tabs" role="tablist" aria-label="Filter orders by fulfilment status">{queueTabs.map((queue) => <button key={queue} role="tab" aria-selected={tab === queue} className={tab === queue ? "selected" : ""} onClick={() => setTab(queue)}>{queue}<span>{counts[queue]}</span></button>)}</div>
           <TableToolbar value={query} onChange={setQuery} placeholder="Search order, customer, product, coupon, or tracking..." right={<>
             <select className="period-select" aria-label="Filter by payment" value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value)}><option>Any payment</option><option>Paid</option><option>Pending</option><option>Failed</option><option>Partially refunded</option><option>Refunded</option></select>

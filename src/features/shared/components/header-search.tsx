@@ -401,7 +401,7 @@ export function HeaderSearch({
         className={[
           "hidden sm:flex items-center gap-2.5 rounded-full border bg-white/95 px-3.5 py-1.5 shadow-xs transition-all duration-300 ease-out",
           isOpen
-            ? "w-80 md:w-96 lg:w-[440px] border-[#0D9488]/80 shadow-[0_8px_24px_rgba(13,148,136,0.12)] ring-4 ring-[#0D9488]/10"
+            ? "w-80 md:w-96 lg:w-[440px] border-slate-300 shadow-sm"
             : "w-56 md:w-64 lg:w-72 border-slate-200/90 hover:border-slate-300",
         ].join(" ")}
       >
@@ -411,7 +411,7 @@ export function HeaderSearch({
           ) : (
             <Search
               size={15}
-              className={`transition-colors ${isOpen ? "text-[#0D9488]" : "text-slate-400"}`}
+              className={`transition-colors ${isOpen ? "text-slate-600" : "text-slate-400"}`}
             />
           )}
         </div>
@@ -430,7 +430,7 @@ export function HeaderSearch({
           onKeyDown={handleKeyDown}
           placeholder={placeholderText}
           aria-label="Universal admin search"
-          className="w-full border-0 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400 font-medium"
+          className="w-full border-0 bg-transparent text-xs text-slate-800 outline-none focus-visible:outline-none focus-visible:ring-0 placeholder:text-slate-400 font-medium"
         />
 
         {localQuery && (
@@ -469,11 +469,11 @@ export function HeaderSearch({
       {mobileSearchOpen && (
         <div className="fixed inset-x-0 top-0 z-50 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-xl sm:hidden animate-in slide-in-from-top duration-200">
           <div className="flex items-center gap-2">
-            <div className="flex flex-1 items-center gap-2.5 rounded-full border border-[#0D9488]/80 bg-slate-50/80 px-3.5 py-2 ring-2 ring-[#0D9488]/15">
+            <div className="flex flex-1 items-center gap-2.5 rounded-full border border-slate-300 bg-slate-50/80 px-3.5 py-2">
               {isSearching ? (
                 <Loader2 size={16} className="animate-spin text-[#0D9488]" />
               ) : (
-                <Search size={16} className="text-[#0D9488]" />
+                <Search size={16} className="text-slate-500" />
               )}
               <input
                 ref={mobileInputRef}
@@ -481,7 +481,7 @@ export function HeaderSearch({
                 value={localQuery}
                 onChange={(e) => handleQueryChange(e.target.value)}
                 placeholder="Search clinic records..."
-                className="w-full border-0 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400"
+                className="w-full border-0 bg-transparent text-xs text-slate-800 outline-none focus-visible:outline-none focus-visible:ring-0 placeholder:text-slate-400"
               />
               {localQuery && (
                 <button

@@ -18,6 +18,7 @@ import type { AuditEventRecord, Role } from "../../shared/types";
 
 const mapEventType = (type: string, action: string): AuditEventRecord["type"] => {
   const norm = `${type} ${action}`.toLowerCase();
+  if (norm.includes("appointment") || norm.includes("booking")) return "Bookings";
   if (norm.includes("access") || norm.includes("account") || norm.includes("admin")) return "Access";
   if (norm.includes("feature")) return "Feature";
   if (norm.includes("content") || norm.includes("video")) return "Content";
@@ -25,7 +26,6 @@ const mapEventType = (type: string, action: string): AuditEventRecord["type"] =>
   if (norm.includes("release") || norm.includes("update") || norm.includes("policy")) return "App updates";
   if (norm.includes("order")) return "Orders";
   if (norm.includes("commerce") || norm.includes("product") || norm.includes("inventory")) return "Commerce";
-  if (norm.includes("appointment") || norm.includes("booking")) return "Bookings";
   if (norm.includes("test") || norm.includes("assessment")) return "Testing";
   return "Clinical";
 };

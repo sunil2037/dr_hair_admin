@@ -4,13 +4,10 @@ import {
   Activity,
   ArrowRight,
   BellRing,
-  Building2,
   CalendarCheck2,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
-  Clock3,
   FileText,
   HeartPulse,
   Mail,
@@ -18,21 +15,14 @@ import {
   PackageCheck,
   Phone,
   Search,
-  ShieldCheck,
-  Sparkles,
-  Stethoscope,
   UsersRound,
   X,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState } from "react";
-import { Avatar, PageHeader, StatusPill } from "../../shared/components/ui";
-import { useSessionState } from "../../shared/lib/use-session-state";
-import { patientClinicalProfiles } from "../../operations/lib/patient-profiles";
-import type { AdminRecord, AuditEventRecord, PageKey, Role, Status } from "../../shared/types";
-import type { OrderRecord, PatientRecord } from "../../shared/types";
+import { StatusPill } from "../../shared/components/ui";
+import type { AdminRecord, AuditEventRecord, PageKey, Role } from "../../shared/types";
 import type { BookingRecord } from "../../shared/types";
-import type { HairTestRecord, PatientClinicalProfile, PatientReportNotification } from "../../operations/types";
 
 type RegisteredPatient = {
   id: string;
@@ -47,7 +37,7 @@ type RegisteredPatient = {
   createdAt: string;
 };
 
-export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissions = [], events = [], admins = [], onAudit = () => {}, onToast = () => {}, anchor = "" }: {
+export function Dashboard({ role, onNavigate, onOpenPatient, permissions = [], onAudit = () => {}, onToast = () => {}, anchor = "" }: {
   role: Role;
   userName: string;
   onNavigate: (page: PageKey, options?: { bookingDate?: string; anchor?: string }) => void;
@@ -60,9 +50,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   anchor?: string;
 }) {
   const isSuper = role === "super-admin";
-  const [patients] = useSessionState<PatientRecord[]>("drhair-demo-patients", []);
-  const [bookings, setBookings] = useSessionState<BookingRecord[]>("drhair-demo-bookings", []);
-  const [clinicHolidays] = useSessionState<string[]>("drhair-demo-clinic-holidays", ["2026-11-01", "2026-11-02", "2026-12-25", "2027-01-26"]);
+  const clinicHolidays: string[] = [];
   const [selectedAppointmentDate, setSelectedAppointmentDate] = useState(() => startOfToday());
   const [selectedBooking, setSelectedBooking] = useState<BookingRecord | null>(null);
   const [serverSummary, setServerSummary] = useState<{
@@ -78,12 +66,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
   const [registeredPatientsState, setRegisteredPatientsState] = useState<"loading" | "ready" | "error">("loading");
   const [liveBookings, setLiveBookings] = useState<BookingRecord[]>([]);
   const [liveBookingsLoaded, setLiveBookingsLoaded] = useState(false);
-  const [orders] = useSessionState<OrderRecord[]>("drhair-demo-orders", []);
-  const [profiles] = useSessionState<Record<string, PatientClinicalProfile>>("drhair-demo-patient-profiles", patientClinicalProfiles);
-  const [hairTests] = useSessionState<HairTestRecord[]>("drhair-demo-hair-tests", []);
-  const [notifications] = useSessionState<PatientReportNotification[]>("drhair-demo-patient-notifications", []);
   const effectiveBookings = liveBookingsLoaded ? liveBookings : [];
-  const reviewPatients = patients.filter((patient) => patient.status === "Review" || patient.status === "Pending");
   const today = new Date().toDateString();
   const todayKey = localDateKey(startOfToday());
   const appointmentsToday = effectiveBookings.filter((booking) => (booking.startsAt ? new Date(booking.startsAt).toDateString() === today : booking.date.toLowerCase().includes("today")) && !["Cancelled", "No show"].includes(booking.status));
@@ -95,10 +78,6 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
       return date !== null && localDateKey(date) === selectedDateKey;
     })
     .sort((left, right) => (appointmentDate(left)?.getTime() ?? 0) - (appointmentDate(right)?.getTime() ?? 0));
-  const ordersToFulfil = orders.filter((order) => ["New", "Pending", "Needs attention"].includes(order.status)).length;
-  const reportsReady = Object.entries(profiles).flatMap(([patientId, profile]) => profile.reports
-    .filter((report) => report.status === "Ready" && !notifications.some((notification) => notification.patientId === patientId && notification.reportId === report.id)));
-  const adminActive = admins.filter((admin) => admin.status === "Active").length;
   const permitted = (permission: string) => isSuper || permissions.includes(permission);
   const canViewPatients = permitted("patients.view");
   useEffect(() => {
@@ -120,7 +99,7 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
           setServerSummary(result.data);
         }
       } catch {
-        // Fallback silently to session state
+        // Live metrics remain unavailable until the backend responds.
       }
     };
     void loadSummary();
@@ -151,9 +130,9 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
           doctorName: String(item.doctorName || item.doctor_name || "Dr. Jai Bansal"),
           room: typeof item.room === "string" ? item.room : "Room 101 - Chamber A",
           tokenNumber: typeof item.tokenNumber === "string" ? item.tokenNumber : (typeof item.opd_token === "string" ? item.opd_token : undefined),
-          opdStatus: (item.status || item.opdStatus || "Confirmed") as BookingRecord["opdStatus"],
+          opdStatus: (item.opdStatus || item.status || "Confirmed") as BookingRecord["opdStatus"],
           consultationFee: typeof item.consultationFee === "number" ? item.consultationFee : (typeof item.consultation_fee === "number" ? item.consultation_fee : 500),
-          paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Paid"),
+          paymentStatus: typeof item.paymentStatus === "string" ? item.paymentStatus : (typeof item.payment_status === "string" ? item.payment_status : "Pending"),
           paymentMethod: typeof item.paymentMethod === "string" ? item.paymentMethod : (typeof item.payment_method === "string" ? item.payment_method : "UPI"),
           paymentTransactionId: typeof item.paymentTransactionId === "string" ? item.paymentTransactionId : (typeof item.payment_transaction_id === "string" ? item.payment_transaction_id : undefined),
         })));
@@ -205,66 +184,43 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
     return () => controller.abort();
   }, [canViewPatients]);
 
-  const openReviewPatient = (patient: PatientRecord) => {
-    const linkedPatient = registeredPatients.find((item) => item.id === patient.id)
-      ?? registeredPatients.find((item) => normalizePatientName(item.name) === normalizePatientName(patient.name));
-    if (linkedPatient) {
-      onOpenPatient(linkedPatient.patientCode || linkedPatient.id);
-      return;
-    }
-    onToast("This review is sample data and is not linked to a live patient profile yet.");
-  };
-
-  const advanceAppointment = (booking: BookingRecord) => {
+  const advanceAppointment = async (booking: BookingRecord) => {
     const action = nextAppointmentAction(booking);
     if (!action) return;
-    const status: Status = action.opdStatus === "Completed" ? "Completed" : "Active";
-    const updated = { ...booking, opdStatus: action.opdStatus, status };
-    setBookings((current) => current.map((item) => item.id === booking.id ? updated : item));
-    setSelectedBooking(updated);
-    onAudit(`updated OPD status to ${action.opdStatus}`, `${booking.id} · ${booking.customer}`);
-    onToast(`Appointment updated: ${action.opdStatus}`);
+    try {
+      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(booking.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: action.opdStatus }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || "Could not update appointment status.");
+        return;
+      }
+      const updated: BookingRecord = {
+        ...booking,
+        opdStatus: action.opdStatus,
+        status: action.opdStatus === "Completed" ? "Completed" : "Active",
+      };
+      setLiveBookings((current) => current.map((item) => item.id === booking.id ? updated : item));
+      setSelectedBooking(updated);
+      onAudit(`updated OPD status to ${action.opdStatus}`, `${booking.id} · ${booking.customer}`);
+      onToast(`Appointment updated: ${action.opdStatus}`);
+    } catch {
+      onToast("Network error updating appointment status.");
+    }
   };
 
-  const openReviewQueue = () => document.getElementById("patient-reviews")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const activityRows = useMemo(() => (isSuper ? events : events.filter((event) => event.who === userName)).slice(0, 4), [events, isSuper, userName]);
+  const activityRows = (serverSummary?.recentActivity ?? []).slice(0, 4);
   const queueBars = [
-    ...(permitted("assessments.review") ? [{ label: "Patient reviews", count: reviewPatients.length, tone: "teal" }] : []),
-    ...(permitted("hair-tests.view") ? [{ label: "Hair tests awaiting review", count: hairTests.filter((test) => test.status === "In review").length, tone: "amber" }] : []),
-    ...(permitted("reports.share") ? [{ label: "Reports ready to share", count: reportsReady.length, tone: "blue" }] : []),
-    ...(permitted("bookings.manage") ? [{ label: "Clinic visits today", count: appointmentsToday.length, tone: "violet" }] : []),
-    ...(permitted("orders.manage") ? [{ label: "Orders needing action", count: ordersToFulfil, tone: "amber" }] : []),
+    ...(permitted("assessments.review") && serverSummary?.assessments?.pending !== undefined ? [{ label: "Assessments to review", count: serverSummary.assessments.pending, tone: "teal" }] : []),
+    ...(permitted("bookings.manage") ? [{ label: "Clinic visits today", count: serverSummary?.appointments?.today ?? appointmentsToday.length, tone: "violet" }] : []),
+    ...(permitted("products.manage") && serverSummary?.catalog?.lowStockProducts !== undefined ? [{ label: "Low stock products", count: serverSummary.catalog.lowStockProducts, tone: "amber" }] : []),
   ];
   const largestQueue = Math.max(1, ...queueBars.map((item) => item.count));
   return <div className="page-wrap dashboard-bento w-full min-w-0">
-    {/* Live Clinical Workspace Status Banner */}
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-teal-100/80 bg-gradient-to-r from-teal-50/70 via-white to-slate-50/60 px-4 py-3 shadow-xs">
-      <div className="flex items-center gap-3">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-        </span>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-700">
-          <span className="font-bold text-[#1A365D] flex items-center gap-1.5">
-            <Sparkles size={13} className="text-teal-600" />
-            {serverSummary ? "Live Clinical Workspace" : "Preview Workspace"}
-          </span>
-          <span className="text-slate-400 hidden sm:inline">·</span>
-          <span className="text-slate-600">
-            {serverSummary
-              ? "Authoritative clinic metrics and patient registry loaded in real-time from Dr. Hair API."
-              : "Patient records & bookings sync with Dr. Hair API. Queues utilize local operational state."}
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200/70 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#1A365D] shadow-xs">
-          <Building2 size={12} className="text-teal-600" />
-          {isSuper ? "Dr. Jai Bansal Clinic · Super Admin" : "Clinical Admin"}
-        </span>
-      </div>
-    </div>
-
     {/* Metric KPI Grid */}
     <section className="kpi-grid mb-5 grid grid-cols-2 gap-3.5 sm:gap-4 lg:grid-cols-4" aria-label="Overview metrics">
       <Kpi
@@ -298,18 +254,18 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
         label="Assessments to review"
         value={
           permitted("assessments.review")
-            ? String(serverSummary?.assessments?.pending ?? reviewPatients.length)
+            ? (serverSummary?.assessments?.pending !== undefined ? String(serverSummary.assessments.pending) : "—")
             : "—"
         }
-        trend={permitted("assessments.review") ? (serverSummary ? "Server queue" : "Current queue") : "No access"}
+        trend={permitted("assessments.review") ? (serverSummary ? "Server queue" : "Unavailable") : "No access"}
         foot={
           permitted("assessments.review")
             ? serverSummary
               ? "live assessments"
-              : "preview records"
+              : "summary unavailable"
             : "assessment access off"
         }
-        onClick={permitted("assessments.review") ? openReviewQueue : undefined}
+        onClick={permitted("assessments.review") ? () => onNavigate("patients", { anchor: "registered-patients" }) : undefined}
       />
       <Kpi
         icon={<CalendarCheck2 size={18} />}
@@ -333,31 +289,29 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
       <Kpi
         icon={isSuper ? <HeartPulse size={18} /> : <PackageCheck size={18} />}
         tone="violet"
-        label={isSuper ? "Reports shared" : "Orders to fulfil"}
+        label={isSuper ? "Reports shared" : "Catalog products"}
         value={
-          permitted(isSuper ? "reports.share" : "orders.manage")
-            ? String(
-                isSuper
-                  ? (serverSummary?.reports?.shared ?? reportsReady.length)
-                  : ordersToFulfil
-              )
+          permitted(isSuper ? "reports.share" : "products.manage")
+            ? (isSuper
+                ? (serverSummary?.reports?.shared !== undefined ? String(serverSummary.reports.shared) : "—")
+                : (serverSummary?.catalog?.totalProducts !== undefined ? String(serverSummary.catalog.totalProducts) : "—"))
             : "—"
         }
-        trend={permitted(isSuper ? "reports.share" : "orders.manage") ? (serverSummary ? "Clinical vault" : "Active queue") : "No access"}
+        trend={permitted(isSuper ? "reports.share" : "products.manage") ? (serverSummary ? "Live API" : "Unavailable") : "No access"}
         foot={
-          permitted(isSuper ? "reports.share" : "orders.manage")
+          permitted(isSuper ? "reports.share" : "products.manage")
             ? serverSummary
-              ? "shared with patients"
-              : "needs fulfillment"
+              ? (isSuper ? "shared with patients" : "listed products")
+              : "summary unavailable"
             : "restricted access"
         }
-        onClick={!isSuper && permitted("orders.manage") ? () => onNavigate("orders") : undefined}
+        onClick={!isSuper && permitted("products.manage") ? () => onNavigate("catalog") : undefined}
       />
     </section>
 
     <section className="mb-4 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-12" aria-label="Appointments by date">
       <AppointmentCalendar
-        bookings={permitted("bookings.manage") ? bookings : []}
+        bookings={permitted("bookings.manage") ? effectiveBookings : []}
         selectedDate={selectedAppointmentDate}
         onSelectDate={setSelectedAppointmentDate}
         clinicHolidays={clinicHolidays}
@@ -374,29 +328,23 @@ export function Dashboard({ role, userName, onNavigate, onOpenPatient, permissio
 
     <section className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-12" aria-label="Clinic operations">
       <article className="card overflow-hidden rounded-[28px] lg:col-span-5">
-        <div className="card-head"><div><span className="eyebrow">Care operations</span><h2 className="card-title">Clinic work queues</h2><p className="card-note">Open work based on the current sample records</p></div></div>
+        <div className="card-head"><div><span className="eyebrow">Care operations</span><h2 className="card-title">Clinic work queues</h2><p className="card-note">Current counts from the clinic API</p></div></div>
         {queueBars.length > 0 ? <div className="dashboard-queue-list">{queueBars.map((item) => <div className="dashboard-queue-row" key={item.label}>
           <div className="dashboard-queue-heading"><span>{item.label}</span><strong>{item.count}</strong></div>
           <div className="dashboard-queue-track"><span className={`dashboard-queue-fill ${item.tone}`} style={{ width: `${Math.max(item.count ? 9 : 0, item.count / largestQueue * 100)}%` }} /></div>
         </div>)}</div> : <div className="empty-state">No operational access is assigned to this account.</div>}
-        {queueBars.length > 0 && <div className="chart-foot"><span><i className="legend-dot" />Queue size</span><span>Derived from demo records</span></div>}
+        {queueBars.length > 0 && <div className="chart-foot"><span><i className="legend-dot" />Queue size</span></div>}
       </article>
       <div className="grid grid-cols-1 gap-4 lg:col-span-7">
       <article className="card overflow-hidden rounded-[28px]">
-        <div className="card-head"><div><h2 className="card-title">Recent activity</h2><p className="card-note">Saved panel actions and sample history</p></div><button className="row-action" aria-label="View activity" onClick={() => isSuper ? onNavigate("activity") : onNavigate(permitted("patients.view") ? "patients" : "overview")}><ArrowRight size={16} /></button></div>
+        <div className="card-head"><div><h2 className="card-title">Recent activity</h2><p className="card-note">Latest recorded backend activity</p></div><button className="row-action" aria-label="View activity" onClick={() => isSuper ? onNavigate("activity") : onNavigate(permitted("patients.view") ? "patients" : "overview")}><ArrowRight size={16} /></button></div>
         {activityRows.length ? <div className="activity-list">{activityRows.map((event, index) => {
           const Icon = event.type === "Orders" || event.type === "Commerce" ? PackageCheck : event.type === "Bookings" ? CalendarCheck2 : event.type === "Testing" ? FileText : event.type === "Access" ? UsersRound : event.type === "Feature" ? BellRing : Activity;
           return <div className="activity-row" key={`${event.who}-${event.time}-${index}`}><div className="activity-icon"><Icon size={14} /></div><div className="activity-copy"><div className="activity-text"><strong>{event.who}</strong> {event.action} <strong>{event.target}</strong></div><div className="activity-time">{event.time} · {event.type}</div></div></div>;
         })}</div> : <div className="empty-state">No recorded activity yet.</div>}
       </article>
-      {isSuper && <article className="card overflow-hidden rounded-[28px]"><div className="section-row"><div><h2 className="card-title">Admin access snapshot</h2><p className="card-note">Staff access to Dr. Jai Bansal’s panel</p></div><button className="button button-secondary button-small" onClick={() => onNavigate("team")}>Manage team <ArrowRight size={13} /></button></div><div className="admin-snapshot-body"><div className="admin-snapshot-avatars">{admins.slice(0, 4).map((admin) => <span className="avatar" key={admin.id}>{admin.initials}</span>)}</div><span>{admins.length} admins · {adminActive} active · {admins.length - adminActive} inactive or suspended</span></div></article>}
       </div>
     </section>
-
-    {permitted("patients.view") && <section className="card" style={{ marginBottom: 16 }}>
-      <div id="patient-reviews" className="section-row scroll-mt-24"><div><h2 className="card-title">Patient reviews</h2><p className="card-note">Patients waiting for clinical attention</p></div><button className="button button-secondary button-small" onClick={() => onNavigate("patients", { anchor: "registered-patients" })}>Open patient records <ArrowRight size={13} /></button></div>
-      <div className="table-wrap"><table><thead><tr><th>Patient</th><th>Assessment summary</th><th>Submitted</th><th>Status</th><th /></tr></thead><tbody>{reviewPatients.slice(0, 4).map((patient) => { const linked = registeredPatients.find((item) => item.id === patient.id) ?? registeredPatients.find((item) => normalizePatientName(item.name) === normalizePatientName(patient.name)); return <tr key={patient.id}><td><button type="button" className="person text-left" onClick={() => openReviewPatient(patient)} aria-label={linked ? `Open ${patient.name} patient profile` : `${patient.name}; preview review not linked to a live profile`}><Avatar initials={patient.initials} /><span><span className="person-name block">{patient.name}</span><span className="person-sub block">{patient.id}</span></span></button></td><td>{patient.assessment}</td><td>{patient.submitted}</td><td><StatusPill status={patient.status} /></td><td><button className="row-action" aria-label={linked ? `Open ${patient.name} profile` : `Check ${patient.name} review link`} onClick={() => openReviewPatient(patient)}><ArrowRight size={15} /></button></td></tr>;})}{reviewPatients.length === 0 && <tr><td colSpan={5}><div className="empty-state">No patients are waiting for review.</div></td></tr>}</tbody></table></div>
-    </section>}
 
     {selectedBooking && <AppointmentDetailsDialog
       booking={selectedBooking}
@@ -646,56 +594,13 @@ function SelectedDateAppointments({ bookings, date, onNavigate, onOpenAppointmen
 
       {bookings.length ? (
         <div className="p-4 sm:p-5">
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-            {/* Appointments cards column */}
-            <div className={`space-y-3 ${bookings.length <= 2 ? "xl:col-span-7" : "xl:col-span-12"}`}>
+          <div className="space-y-3">
+            <div className="space-y-3">
               {bookings.map((booking) => (
                 <AppointmentPatientCard key={booking.id} booking={booking} onClick={() => onOpenAppointment(booking)} />
               ))}
             </div>
 
-            {/* OPD Chamber Intelligence & Daily Summary Widget (eliminates large screen empty space) */}
-            {bookings.length <= 2 && (
-              <div className="xl:col-span-5 rounded-2xl border border-teal-100/80 bg-gradient-to-br from-[#F0F7FF]/90 via-white to-teal-50/40 p-4 sm:p-5 flex flex-col justify-between shadow-xs">
-                <div>
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <Stethoscope size={13} className="text-teal-600" />
-                      Chamber Intelligence
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                      <CheckCircle2 size={10} /> Active OPD
-                    </span>
-                  </div>
-
-                  <div className="mt-3.5 space-y-2.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Clinician</span>
-                      <span className="font-semibold text-[#1A365D]">Dr. Jai Bansal</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Chamber</span>
-                      <span className="font-medium text-slate-700">Room 101 · Chamber A</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">OPD Hours</span>
-                      <span className="font-medium text-slate-700">10:00 AM – 07:00 PM</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Slot Progress</span>
-                      <span className="font-semibold text-teal-700">
-                        {bookings.length} Booked · {Math.round((completedCount / (bookings.length || 1)) * 100)}% Done
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-slate-200/60 bg-white/80 p-2.5 text-[11px] text-slate-500">
-                  <span className="font-semibold text-[#1A365D] block mb-0.5">Clinical workflow</span>
-                  Click on any booking card to advance OPD status, assign token, or inspect linked patient history.
-                </div>
-              </div>
-            )}
           </div>
         </div>
       ) : (

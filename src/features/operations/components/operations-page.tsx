@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock,
+  CreditCard,
+  DollarSign,
   Download,
   Eye,
   FileText,
@@ -100,6 +102,19 @@ function CareOperationsPage({
   const [appointmentService, setAppointmentService] = useState("Clinic consultation");
   const [appointmentSource, setAppointmentSource] = useState<NonNullable<BookingRecord["source"]>>("Phone");
   const [statusFilter, setStatusFilter] = useState("All status");
+  const [paymentFilter, setPaymentFilter] = useState("All payments");
+  const [paymentModalBooking, setPaymentModalBooking] = useState<BookingRecord | null>(null);
+  const [paymentActionStatus, setPaymentActionStatus] = useState<"Paid" | "Pending" | "Waived" | "Refunded">("Paid");
+  const [paymentMethodChoice, setPaymentMethodChoice] = useState("Cash");
+  const [paymentTxnInput, setPaymentTxnInput] = useState("");
+  const [paymentFeeInput, setPaymentFeeInput] = useState(500);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+
+  // New Appointment Form payment fields
+  const [appointmentFee, setAppointmentFee] = useState(500);
+  const [appointmentPaymentStatus, setAppointmentPaymentStatus] = useState<"Pending" | "Paid" | "Waived">("Pending");
+  const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState("Pay at clinic");
+  const [appointmentTransactionId, setAppointmentTransactionId] = useState("");
   const [bookingDateRange, setBookingDateRange] = useState<BookingDateRange>(initialDateFilter ? "all" : "upcoming");
   const [bookingDateFilter, setBookingDateFilter] = useState(initialDateFilter);
   const [printingSlipBooking, setPrintingSlipBooking] = useState<BookingRecord | null>(null);
@@ -307,12 +322,33 @@ function CareOperationsPage({
     }
   };
 
-  const markFeePaid = async (bookingId: string) => {
+  const openPaymentModal = (booking: BookingRecord) => {
+    setPaymentModalBooking(booking);
+    setPaymentActionStatus(booking.paymentStatus === "Paid" ? "Paid" : "Paid");
+    setPaymentMethodChoice(booking.paymentMethod && booking.paymentMethod !== "Pay at clinic" ? booking.paymentMethod : "Cash");
+    setPaymentTxnInput(booking.paymentTransactionId || "");
+    setPaymentFeeInput(booking.consultationFee ?? 500);
+  };
+
+  const handleSavePaymentRecord = async () => {
+    if (!paymentModalBooking) return;
+    setSubmittingPayment(true);
     try {
-      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(bookingId)}`, {
+      const isPaid = paymentActionStatus === "Paid";
+      const isWaived = paymentActionStatus === "Waived";
+      const finalFee = isWaived ? 0 : paymentFeeInput;
+      const finalMethod = isPaid ? paymentMethodChoice : (isWaived ? "Free / Waived" : (paymentActionStatus === "Refunded" ? "Refund" : "Pay at clinic"));
+      const finalTxn = isPaid ? paymentTxnInput.trim() || undefined : undefined;
+
+      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(paymentModalBooking.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payment_status: "Paid" }),
+        body: JSON.stringify({
+          payment_status: paymentActionStatus,
+          payment_method: finalMethod,
+          payment_transaction_id: finalTxn,
+          consultation_fee: finalFee,
+        }),
         cache: "no-store",
       });
       const result = await response.json().catch(() => ({}));
@@ -320,8 +356,39 @@ function CareOperationsPage({
         onToast(result.message || "Could not update payment status.");
         return;
       }
-      setDialog((current) => current?.id === bookingId ? { ...current, paymentStatus: "Paid" } : null);
-      onAudit("marked appointment payment as Paid", `Booking ${bookingId}`);
+      setDialog((current) => current?.id === paymentModalBooking.id ? {
+        ...current,
+        paymentStatus: paymentActionStatus,
+        paymentMethod: finalMethod,
+        paymentTransactionId: finalTxn,
+        consultationFee: finalFee,
+      } : current);
+      onAudit(`updated payment to ${paymentActionStatus} (${finalMethod})`, `Booking ${paymentModalBooking.id}`);
+      onToast(`Payment record updated: ${paymentActionStatus} · ₹${finalFee} (${finalMethod})`);
+      setPaymentModalBooking(null);
+      setReloadBookings((c) => c + 1);
+    } catch {
+      onToast("Network error updating payment record.");
+    } finally {
+      setSubmittingPayment(false);
+    }
+  };
+
+  const markFeePaid = async (bookingId: string) => {
+    try {
+      const response = await fetch(`/api/admin/appointments/${encodeURIComponent(bookingId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_status: "Paid", payment_method: "Cash" }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        onToast(result.message || "Could not update payment status.");
+        return;
+      }
+      setDialog((current) => current?.id === bookingId ? { ...current, paymentStatus: "Paid", paymentMethod: "Cash" } : null);
+      onAudit("marked appointment payment as Paid (Cash)", `Booking ${bookingId}`);
       onToast("Appointment marked as Paid.");
       setReloadBookings((c) => c + 1);
     } catch {
@@ -375,17 +442,22 @@ function CareOperationsPage({
     const todayKey = localDateKey(now);
     return bookings.filter(
       (item) => {
-        const matchesSearch = `${item.customer} ${item.service} ${item.id} ${item.tokenNumber ?? ""} ${item.source ?? ""}`.toLowerCase().includes(search);
+        const matchesSearch = `${item.customer} ${item.service} ${item.id} ${item.tokenNumber ?? ""} ${item.source ?? ""} ${item.paymentStatus ?? ""} ${item.paymentMethod ?? ""}`.toLowerCase().includes(search);
         const matchesStatus = statusFilter === "All status" || item.status === statusFilter || item.opdStatus === statusFilter;
+        const matchesPayment = paymentFilter === "All payments"
+          || (paymentFilter === "Paid" && item.paymentStatus === "Paid")
+          || (paymentFilter === "Pending" && (item.paymentStatus === "Pending" || !item.paymentStatus))
+          || (paymentFilter === "Waived / Free" && (item.paymentStatus === "Waived" || item.consultationFee === 0 || item.paymentMethod === "Free First Consultation"))
+          || (paymentFilter === "Refunded" && item.paymentStatus === "Refunded");
         const dateKey = bookingDateKey(item);
         const matchesDate = bookingDateFilter ? dateKey === bookingDateFilter : bookingDateRange === "all" || (bookingDateRange === "upcoming" ? dateKey >= todayKey : dateKey < todayKey);
-        return matchesSearch && matchesStatus && matchesDate;
+        return matchesSearch && matchesStatus && matchesPayment && matchesDate;
       }
     ).sort((left, right) => {
       const difference = bookingTimestamp(left) - bookingTimestamp(right);
       return bookingDateFilter || bookingDateRange === "upcoming" ? difference : -difference;
     });
-  }, [bookingDateFilter, bookingDateRange, bookings, search, statusFilter]);
+  }, [bookingDateFilter, bookingDateRange, bookings, paymentFilter, search, statusFilter]);
 
   const isSlotBooked = (date: string, slot: string) => {
     if (!date || !slot) return false;
@@ -508,6 +580,10 @@ function CareOperationsPage({
             starts_at: start.toISOString(),
             reason,
             source: appointmentSource,
+            consultation_fee: appointmentPaymentStatus === "Waived" ? 0 : appointmentFee,
+            payment_status: appointmentPaymentStatus,
+            payment_method: appointmentPaymentMethod,
+            payment_transaction_id: appointmentPaymentStatus === "Paid" ? appointmentTransactionId.trim() || undefined : undefined,
           }),
           cache: "no-store",
         });
@@ -517,8 +593,8 @@ function CareOperationsPage({
           return;
         }
         const createdId = result?.data?.id || "new";
-        onAudit("created clinic appointment", `${createdId} · ${patient.id}`);
-        onToast("OPD clinic appointment scheduled with Dr. Jai Bansal.");
+        onAudit("created clinic appointment", `${createdId} · ${patient.id} · Payment: ${appointmentPaymentStatus}`);
+        onToast(`OPD appointment scheduled (Payment: ${appointmentPaymentStatus} · ₹${appointmentPaymentStatus === "Waived" ? 0 : appointmentFee}).`);
       }
 
       setReloadBookings((c) => c + 1);
@@ -541,6 +617,10 @@ function CareOperationsPage({
     setAppointmentSlot("10:30 AM");
     setAppointmentService("Clinic consultation");
     setAppointmentSource("Phone");
+    setAppointmentFee(500);
+    setAppointmentPaymentStatus("Pending");
+    setAppointmentPaymentMethod("Pay at clinic");
+    setAppointmentTransactionId("");
     setShowAppointmentForm(true);
   };
 
@@ -553,6 +633,10 @@ function CareOperationsPage({
     setAppointmentService("Clinic consultation");
     setAppointmentSource("Phone");
     setAppointmentRescheduleReason("");
+    setAppointmentFee(500);
+    setAppointmentPaymentStatus("Pending");
+    setAppointmentPaymentMethod("Pay at clinic");
+    setAppointmentTransactionId("");
   };
 
   const rescheduleAppointment = (appointment: BookingRecord) => {
@@ -768,11 +852,26 @@ function CareOperationsPage({
                   <option key={status}>{status}</option>
                 ))}
               </select>}
-              {(query || statusFilter !== "All status" || bookingDateFilter || bookingDateRange !== "upcoming") && <button
+              {!isPatient && (
+                <select
+                  className="period-select min-w-0 flex-1 sm:flex-none"
+                  aria-label="Filter by payment status"
+                  value={paymentFilter}
+                  onChange={(e) => setPaymentFilter(e.target.value)}
+                >
+                  <option>All payments</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Pending">Pay at clinic</option>
+                  <option value="Waived / Free">Waived / Free</option>
+                  <option value="Refunded">Refunded</option>
+                </select>
+              )}
+              {(query || statusFilter !== "All status" || paymentFilter !== "All payments" || bookingDateFilter || bookingDateRange !== "upcoming") && <button
                 className="filter-button min-w-[82px] flex-1 sm:flex-none"
                 onClick={() => {
                   setQuery("");
                   setStatusFilter("All status");
+                  setPaymentFilter("All payments");
                   setTriageFilter("all");
                   setBookingDateFilter("");
                   setBookingDateRange("upcoming");
@@ -914,6 +1013,7 @@ function CareOperationsPage({
             <AppointmentList
               bookings={filteredBookings}
               onOpen={setDialog}
+              onRecordPayment={openPaymentModal}
               onAdvance={(booking) => {
                 const next = nextAppointmentAction(booking);
                 if (next) updateOpdStatus(booking.id, next.status);
@@ -1022,13 +1122,14 @@ function CareOperationsPage({
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => handleCancelClick(dialog)} className="button button-danger">Cancel visit</button>}
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => updateBookingStatus("No show")} className="button button-secondary">Mark no-show</button>}
               {!['Cancelled', 'Completed', 'No show'].includes(dialog.status) && <button type="button" onClick={() => rescheduleAppointment(dialog)} className="button button-secondary">Reschedule</button>}
-              {dialog.paymentStatus !== "Paid" && !['Cancelled', 'Completed', 'No show'].includes(dialog.status) && (
+              {!['Cancelled', 'No show'].includes(dialog.status) && (
                 <button
                   type="button"
-                  onClick={() => { void markFeePaid(dialog.id); }}
+                  onClick={() => openPaymentModal(dialog)}
                   className="button button-primary"
                 >
-                  Mark fee paid (₹{dialog.consultationFee ?? 500})
+                  <DollarSign size={14} />
+                  {dialog.paymentStatus === "Paid" ? "Update payment" : `Collect fee (₹${dialog.consultationFee ?? 500})`}
                 </button>
               )}
               <button type="button" onClick={() => setPrintingSlipBooking(dialog)} className="button button-secondary"><Printer size={14} /> Print slip</button>
@@ -1108,6 +1209,69 @@ function CareOperationsPage({
                 </select>
               </label>
 
+              {!editingAppointmentId && (
+                <>
+                  <label className="field">
+                    <span>Consultation Fee (₹)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={50}
+                      value={appointmentFee}
+                      onChange={(e) => setAppointmentFee(Math.max(0, Number(e.target.value)))}
+                      placeholder="500"
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Payment Status</span>
+                    <select
+                      value={appointmentPaymentStatus}
+                      onChange={(e) => {
+                        const status = e.target.value as typeof appointmentPaymentStatus;
+                        setAppointmentPaymentStatus(status);
+                        if (status === "Paid" && appointmentPaymentMethod === "Pay at clinic") {
+                          setAppointmentPaymentMethod("Cash");
+                        } else if (status === "Pending") {
+                          setAppointmentPaymentMethod("Pay at clinic");
+                        }
+                      }}
+                    >
+                      <option value="Pending">Pay at clinic (Pending)</option>
+                      <option value="Paid">Paid at reception</option>
+                      <option value="Waived">Waived / Free 1st visit</option>
+                    </select>
+                  </label>
+
+                  {appointmentPaymentStatus === "Paid" && (
+                    <>
+                      <label className="field">
+                        <span>Payment Method</span>
+                        <select
+                          value={appointmentPaymentMethod}
+                          onChange={(e) => setAppointmentPaymentMethod(e.target.value)}
+                        >
+                          <option value="Cash">Cash at reception</option>
+                          <option value="UPI / QR">UPI / QR (GPay/PhonePe/Paytm)</option>
+                          <option value="Card">Card / POS Terminal</option>
+                          <option value="Online">Online / Pre-paid</option>
+                        </select>
+                      </label>
+
+                      <label className="field">
+                        <span>Receipt / Txn Reference (Optional)</span>
+                        <input
+                          placeholder="e.g. REC-1082 or UPI UTR"
+                          value={appointmentTransactionId}
+                          onChange={(e) => setAppointmentTransactionId(e.target.value)}
+                          maxLength={50}
+                        />
+                      </label>
+                    </>
+                  )}
+                </>
+              )}
+
               {editingAppointmentId && (
                 <label className="field sm:col-span-2">
                   <span>Reschedule Note / Reason (Sent via push notification to patient)</span>
@@ -1132,6 +1296,129 @@ function CareOperationsPage({
               <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-900 text-xs flex items-center gap-2">
                 <AlertTriangle size={15} className="shrink-0 text-rose-600" />
                 <span><strong>Date closed:</strong> New appointments cannot be added on this date. Reopen it in Manage availability to accept bookings again.</span>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Appointment Payment Management Modal */}
+      {paymentModalBooking && (
+        <Modal
+          title={`Appointment Payment · ${paymentModalBooking.tokenNumber ?? paymentModalBooking.id}`}
+          description={`${paymentModalBooking.customer} · Dr. Jai Bansal (${paymentModalBooking.date})`}
+          submitLabel={submittingPayment ? "Saving payment…" : "Save payment record"}
+          submitDisabled={submittingPayment}
+          onClose={() => setPaymentModalBooking(null)}
+          onSubmit={handleSavePaymentRecord}
+        >
+          <div className="space-y-4 text-xs">
+            {/* Patient & appointment brief */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Patient:</span>
+                <strong className="text-slate-900">{paymentModalBooking.customer}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Sitting Slot:</span>
+                <span className="font-semibold text-teal-700">{paymentModalBooking.date}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Current Status:</span>
+                <span className="font-medium text-slate-700">{paymentModalBooking.paymentStatus ?? "Pending"} · {paymentModalBooking.paymentMethod ?? "Pay at clinic"}</span>
+              </div>
+            </div>
+
+            {/* Payment Action Selector */}
+            <div className="space-y-1.5">
+              <span className="font-bold text-slate-700 block">Select Payment Action *</span>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "Paid", label: "Mark as Paid", desc: "Cash / UPI collected" },
+                  { id: "Pending", label: "Pay at Clinic", desc: "Awaiting payment" },
+                  { id: "Waived", label: "Waive Fee", desc: "Complimentary / Free" },
+                ].map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => {
+                      setPaymentActionStatus(action.id as typeof paymentActionStatus);
+                      if (action.id === "Paid" && paymentMethodChoice === "Pay at clinic") {
+                        setPaymentMethodChoice("Cash");
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      paymentActionStatus === action.id
+                        ? "border-teal-500 bg-teal-50/70 text-teal-900 shadow-xs ring-1 ring-teal-500 font-semibold"
+                        : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                    }`}
+                  >
+                    <div className="font-bold text-xs">{action.label}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{action.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Fee Amount */}
+            <label className="field">
+              <span>Consultation Fee (₹)</span>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-slate-400 font-bold">₹</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  disabled={paymentActionStatus === "Waived"}
+                  value={paymentActionStatus === "Waived" ? 0 : paymentFeeInput}
+                  onChange={(e) => setPaymentFeeInput(Math.max(0, Number(e.target.value)))}
+                  className="pl-7"
+                />
+              </div>
+            </label>
+
+            {paymentActionStatus === "Paid" && (
+              <>
+                <label className="field">
+                  <span>Payment Collection Method *</span>
+                  <select
+                    value={paymentMethodChoice}
+                    onChange={(e) => setPaymentMethodChoice(e.target.value)}
+                  >
+                    <option value="Cash">Cash at clinic desk</option>
+                    <option value="UPI / QR">UPI / QR (GPay / PhonePe / Paytm / BHIM)</option>
+                    <option value="Card">Credit / Debit Card (POS Machine)</option>
+                    <option value="Razorpay">Razorpay Online Payment</option>
+                    <option value="Netbanking">Netbanking / Bank Transfer</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+
+                <label className="field">
+                  <span>Transaction ID / Receipt No. (Optional)</span>
+                  <input
+                    placeholder="e.g. REC-9481 or UPI Reference UTR"
+                    value={paymentTxnInput}
+                    onChange={(e) => setPaymentTxnInput(e.target.value)}
+                    maxLength={80}
+                  />
+                </label>
+              </>
+            )}
+
+            {paymentModalBooking.paymentStatus === "Paid" && (
+              <div className="pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setPaymentActionStatus("Refunded")}
+                  className={`w-full p-2 rounded-lg border text-xs font-semibold transition-all ${
+                    paymentActionStatus === "Refunded"
+                      ? "border-rose-400 bg-rose-50 text-rose-800"
+                      : "border-slate-200 text-slate-600 hover:text-rose-600 hover:border-rose-200"
+                  }`}
+                >
+                  Need to refund? Click here to mark payment as Refunded
+                </button>
               </div>
             )}
           </div>
@@ -1453,28 +1740,34 @@ function BookingSummary({ bookings }: { bookings: BookingRecord[] }) {
   const inChamber = bookings.filter((b) => b.opdStatus === "In Consultation").length;
   const completed = bookings.filter((b) => b.opdStatus === "Completed" || b.status === "Completed").length;
 
+  const paidBookings = bookings.filter((b) => b.paymentStatus === "Paid");
+  const paidTotal = paidBookings.reduce((sum, b) => sum + (b.consultationFee ?? 500), 0);
+
+  const pendingBookings = bookings.filter((b) => (b.paymentStatus === "Pending" || !b.paymentStatus) && !["Cancelled", "No show"].includes(b.status));
+  const pendingTotal = pendingBookings.reduce((sum, b) => sum + (b.consultationFee ?? 500), 0);
+
   return (
     <div className="kpi-grid clinical-metrics grid grid-cols-2 gap-3 lg:grid-cols-4">
       <ClinicalMetric
         icon={<Building2 size={15} />}
         label="Dr. Jai Bansal's OPD Queue"
         value={String(totalBookings)}
-        foot="Scheduled physical visits"
+        foot={`${inWaitingRoom} waiting · ${inChamber} in chamber`}
         tone="blue"
       />
       <ClinicalMetric
-        icon={<UsersRound size={15} />}
-        label="In Waiting Room"
-        value={String(inWaitingRoom)}
-        foot="Arrived at clinic reception"
-        tone="amber"
+        icon={<DollarSign size={15} />}
+        label="Consultation Fees Paid"
+        value={`₹${paidTotal.toLocaleString("en-IN")}`}
+        foot={`${paidBookings.length} bookings paid online/cash`}
+        tone="teal"
       />
       <ClinicalMetric
-        icon={<Stethoscope size={15} />}
-        label="In Consultation Chamber"
-        value={String(inChamber)}
-        foot="Room 101 · Dr. Jai Bansal"
-        tone="teal"
+        icon={<Clock size={15} />}
+        label="Pay-at-Clinic Pending"
+        value={`₹${pendingTotal.toLocaleString("en-IN")}`}
+        foot={`${pendingBookings.length} to collect at reception`}
+        tone="amber"
       />
       <ClinicalMetric
         icon={<CheckCircle2 size={15} />}
@@ -1579,18 +1872,19 @@ function nextAppointmentAction(booking: BookingRecord) {
   return { label: "Mark arrived", status: "Arrived" as const };
 }
 
-function AppointmentList({ bookings, onOpen, onAdvance }: {
+function AppointmentList({ bookings, onOpen, onRecordPayment, onAdvance }: {
   bookings: BookingRecord[];
   onOpen: (booking: BookingRecord) => void;
+  onRecordPayment: (booking: BookingRecord) => void;
   onAdvance: (booking: BookingRecord) => void;
 }) {
   if (bookings.length === 0) return <div className="empty-state py-8 text-center">No appointments match this date and filter.</div>;
 
-  return <div className="appointment-list">
+  return <div className="appointment-list space-y-3">
     {bookings.map((booking) => {
       const primaryAction = nextAppointmentAction(booking);
 
-      return <article className="appointment-card grid-cols-1 min-[461px]:grid-cols-2 min-[761px]:grid-cols-[minmax(0,1fr)_minmax(150px,.8fr)_auto] min-[1101px]:grid-cols-[minmax(180px,1.05fr)_minmax(185px,1.25fr)_minmax(145px,.85fr)_minmax(115px,.6fr)_auto]" key={booking.id}>
+      return <article className="appointment-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs grid-cols-1 min-[461px]:grid-cols-2 min-[761px]:grid-cols-[minmax(0,1fr)_minmax(150px,.8fr)_auto] min-[1101px]:grid-cols-[minmax(180px,1.05fr)_minmax(185px,1.25fr)_minmax(145px,.85fr)_minmax(135px,.75fr)_auto]" key={booking.id}>
         <div className="appointment-card-patient min-[461px]:col-span-2 min-[761px]:col-span-1 min-[761px]:col-start-1 min-[761px]:row-start-1 min-[1101px]:col-auto min-[1101px]:row-auto">
           <span className="appointment-token">{booking.tokenNumber ?? "OPD"}</span>
           <Avatar initials={booking.customer.split(/\s+/).map((part) => part[0]).join("")} />
@@ -1617,11 +1911,42 @@ function AppointmentList({ bookings, onOpen, onAdvance }: {
           <strong>{formatBookingDateTime(booking)}</strong>
           <span>{booking.source ?? "Clinic"} booking</span>
         </div>
-        <div className="appointment-card-status min-[461px]:col-start-2 min-[461px]:justify-self-end min-[761px]:row-start-2 min-[1101px]:col-auto min-[1101px]:row-auto min-[1101px]:justify-self-stretch">
+        <div className="appointment-card-status min-[461px]:col-start-2 min-[461px]:justify-self-end min-[761px]:row-start-2 min-[1101px]:col-auto min-[1101px]:row-auto min-[1101px]:justify-self-stretch flex flex-col gap-1 items-start">
           <span className={`booking-status-chip ${bookingStatusTone(booking)}`}>{bookingStatusLabel(booking)}</span>
+          {booking.paymentStatus === "Paid" ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 size={11} className="text-emerald-600" />
+              Paid · ₹{booking.consultationFee ?? 500} {booking.paymentMethod ? `(${booking.paymentMethod})` : ""}
+            </span>
+          ) : booking.paymentStatus === "Waived" || booking.consultationFee === 0 || booking.paymentMethod === "Free First Consultation" ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+              <Sparkles size={11} className="text-teal-600" />
+              Free 1st Visit · ₹0
+            </span>
+          ) : booking.paymentStatus === "Refunded" ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+              <AlertCircle size={11} className="text-rose-600" />
+              Refunded
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+              <Clock size={11} className="text-amber-600" />
+              Pay at clinic · ₹{booking.consultationFee ?? 500}
+            </span>
+          )}
         </div>
         <div className="appointment-card-actions flex-wrap justify-start border-t border-slate-100 pt-2 min-[461px]:col-span-2 min-[461px]:[&>.button]:flex-1 min-[761px]:col-span-1 min-[761px]:col-start-3 min-[761px]:row-span-2 min-[761px]:row-start-1 min-[761px]:flex-col min-[761px]:justify-center min-[761px]:border-t-0 min-[761px]:pt-0 min-[1101px]:col-auto min-[1101px]:row-auto min-[1101px]:flex-row min-[1101px]:justify-end min-[1101px]:[&>.button]:flex-none">
           {primaryAction && <button type="button" className="button button-primary button-small" onClick={() => onAdvance(booking)}>{primaryAction.label}</button>}
+          {booking.paymentStatus !== "Paid" && !["Cancelled", "Completed"].includes(booking.status) && (
+            <button
+              type="button"
+              className="button button-secondary button-small text-teal-700 border-teal-300 hover:bg-teal-50"
+              onClick={(e) => { e.stopPropagation(); onRecordPayment(booking); }}
+            >
+              <DollarSign size={12} />
+              Collect fee
+            </button>
+          )}
           <button type="button" className="button button-secondary button-small" onClick={() => onOpen(booking)}>Details</button>
         </div>
       </article>;

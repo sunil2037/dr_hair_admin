@@ -10,30 +10,7 @@ export function backendUrl(path: string) {
 }
 
 export async function fetchBackend(path: string, init?: RequestInit): Promise<Response> {
-  const primaryOrigin = (process.env.DRHAIR_BACKEND_URL || DEFAULT_PRODUCTION_BACKEND).replace(/\/+$/, "");
-  const primaryUrl = `${primaryOrigin}${path}`;
-
-  try {
-    const res = await fetch(primaryUrl, init);
-    if (!res.ok && primaryOrigin.includes("localhost") && [502, 503, 504].includes(res.status)) {
-      try {
-        return await fetch(`${DEFAULT_PRODUCTION_BACKEND}${path}`, init);
-      } catch {
-        return res;
-      }
-    }
-    return res;
-  } catch (primaryErr) {
-    if (primaryOrigin !== DEFAULT_PRODUCTION_BACKEND) {
-      try {
-        const fallbackUrl = `${DEFAULT_PRODUCTION_BACKEND}${path}`;
-        return await fetch(fallbackUrl, init);
-      } catch {
-        throw primaryErr;
-      }
-    }
-    throw primaryErr;
-  }
+  return fetch(backendUrl(path), init);
 }
 
 export function noStoreJson(body: unknown, status = 200) {

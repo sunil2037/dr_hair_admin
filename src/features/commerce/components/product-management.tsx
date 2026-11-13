@@ -1,44 +1,37 @@
 "use client";
 
-import { BarChart3, BadgePercent, Package, ShoppingBag } from "lucide-react";
+import { BadgePercent, Package, ShoppingBag } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSessionState } from "../../shared/lib/use-session-state";
 import { PageHeader } from "../../shared/components/ui";
-import { initialCoupons, initialProducts } from "../lib/demo-data";
 import type { CouponRecord, ProductRecord, ProductStatus, ProductBenefit, ProductIngredient, ProductUsageStep, ProductClinicalClaim } from "../types";
 import { CouponsPanel } from "./coupons-panel";
-import { CommerceOverview } from "./commerce-overview";
 import { ProductsPanel } from "./products-panel";
 import { OrdersPage } from "../../operations/components/orders-page";
 import type { AdminPermissionId } from "../../shared/types";
 import type { PanelFeatureAccess } from "../../shared/lib/permissions";
 
-type CommerceTab = "overview" | "products" | "orders" | "coupons";
-const tabs: { id: CommerceTab; label: string; icon: typeof BarChart3 }[] = [
-  { id: "overview", label: "Overview", icon: BarChart3 },
+type CommerceTab = "products" | "orders" | "coupons";
+const nonNegativeNumber = (value: unknown, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : fallback;
+};
+const tabs: { id: CommerceTab; label: string; icon: typeof Package }[] = [
   { id: "products", label: "Products", icon: Package },
   { id: "orders", label: "Orders", icon: ShoppingBag },
   { id: "coupons", label: "Coupons", icon: BadgePercent },
 ];
 
 export function ProductManagement({ onToast, permissions, panelAccess, globalSearch, onAudit }: { onToast: (message: string) => void; permissions: AdminPermissionId[]; panelAccess: PanelFeatureAccess; globalSearch: string; onAudit: (action: string, target: string) => void }) {
-  const [activeTab, setActiveTab] = useState<CommerceTab>("overview");
+  const [activeTab, setActiveTab] = useState<CommerceTab>("products");
   const [createProductOpen, setCreateProductOpen] = useState(false);
-  const [products, setProducts] = useSessionState<ProductRecord[]>("drhair-commerce-products", initialProducts);
-  const [coupons, setCoupons] = useSessionState<CouponRecord[]>("drhair-commerce-coupons", initialCoupons);
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [coupons, setCoupons] = useState<CouponRecord[]>([]);
   const canManageProducts = permissions.includes("products.manage") && panelAccess.catalog !== false;
   const canManageOrders = permissions.includes("orders.manage") && panelAccess.orders !== false;
   const canManagePromotions = permissions.includes("promotions.manage") && panelAccess.catalog !== false;
-  const availableTabs = useMemo(() => tabs.filter((tab) => tab.id === "overview"
-    ? canManageProducts || permissions.includes("commerce.export")
-    : tab.id === "products" ? canManageProducts
+  const availableTabs = useMemo(() => tabs.filter((tab) => tab.id === "products" ? canManageProducts
     : tab.id === "orders" ? canManageOrders
-    : canManagePromotions), [canManageOrders, canManageProducts, canManagePromotions, permissions]);
-
-  useEffect(() => {
-    // Purge any legacy demo products from session storage
-    setProducts((current) => current.filter((p) => !p.id.startsWith("PRD-10") && !p.id.startsWith("demo-")));
-  }, [setProducts]);
+    : canManagePromotions), [canManageOrders, canManageProducts, canManagePromotions]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -83,7 +76,7 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
               price: Number(raw.price) || 0,
               compareAtPrice: Number(raw.compareAtPrice || raw.compare_at_price) || 0,
               unitCost: Number(raw.unitCost || raw.unit_cost) || 0,
-              stock: Number(raw.stock ?? 100),
+              stock: nonNegativeNumber(raw.stock ?? 0),
               unitsSold: Number(raw.unitsSold || raw.units_sold) || 0,
               revenue: Number(raw.revenue) || 0,
               status,
@@ -94,7 +87,13 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
               rootCauses: Array.isArray(raw.rootCauses || raw.root_causes)
                 ? ((raw.rootCauses || raw.root_causes) as string[])
                 : [String(raw.rootCause || raw.root_cause || "Hair")],
-              supplyPlans: (raw.supplyPlans || raw.supply_plans || []) as ProductRecord["supplyPlans"],
+              supplyPlans: Array.isArray(raw.supplyPlans || raw.supply_plans)
+                ? ((raw.supplyPlans || raw.supply_plans) as Array<Record<string, unknown>>).map((plan) => ({
+                    ...plan,
+                    stock: nonNegativeNumber(plan.stock),
+                    lowStockThreshold: nonNegativeNumber(plan.lowStockThreshold ?? plan.low_stock_threshold, 10),
+                  })) as ProductRecord["supplyPlans"]
+                : [],
               benefits: Array.isArray(raw.benefits)
                 ? (raw.benefits as Array<ProductBenefit | string>).map((b) =>
                     typeof b === "string" ? { title: b, description: "" } : b
@@ -131,7 +130,7 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
     return refreshProducts();
   }, [refreshProducts]);
 
-  const resolvedActiveTab = availableTabs.some((tab) => tab.id === activeTab) ? activeTab : availableTabs[0]?.id ?? "overview";
+  const resolvedActiveTab = availableTabs.some((tab) => tab.id === activeTab) ? activeTab : availableTabs[0]?.id ?? "products";
   const tabLabel = tabs.find((tab) => tab.id === resolvedActiveTab)?.label ?? "Overview";
   const selectTab = (tab: CommerceTab) => {
     if (!availableTabs.some((item) => item.id === tab)) {
@@ -142,13 +141,12 @@ export function ProductManagement({ onToast, permissions, panelAccess, globalSea
   };
 
   return <div className="page-wrap w-full min-w-0">
-    <PageHeader eyebrow="Commerce · Product growth" title="Commerce" description="Manage your product catalog, sales, offers, and referral program." action={resolvedActiveTab === "products" ? <button className="button button-primary" onClick={() => setCreateProductOpen(true)}><Package size={14} />Add product</button> : undefined} />
-    <div className="notice commerce-note"><BarChart3 size={14} /><span>Products, orders, and coupons are synchronized directly with the production API backend.</span></div>
+    {resolvedActiveTab !== "orders" && <PageHeader eyebrow="Commerce" title={resolvedActiveTab === "coupons" ? "Offers" : "Products"} description={resolvedActiveTab === "coupons" ? "Manage checkout promotions." : "Manage the product catalog."} action={resolvedActiveTab === "products" && canManageProducts ? <button className="button button-primary" onClick={() => setCreateProductOpen(true)}><Package size={14} />Add product</button> : undefined} />}
     <div className="commerce-tabs" role="tablist" aria-label="Commerce sections">
       {availableTabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={resolvedActiveTab === id} className={`commerce-tab ${resolvedActiveTab === id ? "selected" : ""}`} onClick={() => selectTab(id)}><Icon size={15} />{label}{id === "products" && <span>{products.length}</span>}</button>)}
     </div>
-    <div key={activeTab} className="commerce-content" aria-label={`${tabLabel} section`}>
-      {resolvedActiveTab === "overview" && <CommerceOverview products={products} coupons={coupons} onNavigate={selectTab} />}
+    <div className="commerce-content" aria-label={`${tabLabel} section`}>
+      {availableTabs.length === 0 && <div className="empty-state">No commerce sections are available for this account.</div>}
       {resolvedActiveTab === "products" && canManageProducts && <ProductsPanel products={products} onProductsChange={(updater) => { setProducts(updater); onAudit("updated product catalog", "Product records"); }} createProductOpen={createProductOpen} onCreateHandled={() => setCreateProductOpen(false)} onToast={onToast} onRefresh={refreshProducts} />}
       {resolvedActiveTab === "orders" && canManageOrders && <OrdersPage globalSearch={globalSearch} onToast={onToast} onAudit={onAudit} canExport={permissions.includes("commerce.export")} />}
       {resolvedActiveTab === "coupons" && canManagePromotions && <CouponsPanel coupons={coupons} products={products} onCouponsChange={(updater) => { setCoupons(updater); onAudit("updated commerce promotions", "Coupon records"); }} onToast={onToast} />}

@@ -14,6 +14,7 @@ import { canAccessPage, type PanelFeatureAccess } from "../lib/permissions";
 import { useSessionState } from "../lib/use-session-state";
 import type { AdminRecord, AdminPermissionId, AuditEventRecord, FeatureRecord, PageKey, Role } from "../types";
 import { AdminShell } from "./admin-shell";
+import { PanelScreen } from "./panel-screen";
 import { SignIn, type AdminIdentity } from "./sign-in";
 import { Toast } from "./ui";
 import { PatientDetailPage } from "../../operations/components/patient-detail-page";
@@ -112,7 +113,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
       setBookingDate("");
       const anchor = options?.anchor ?? "registered-patients";
       setDashboardAnchor(anchor);
-      router.push(`/overview#${anchor}`);
+      window.history.pushState(null, "", `/overview#${encodeURIComponent(anchor)}`);
       return;
     }
     setPage(nextPage);
@@ -125,8 +126,8 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
       : selectedDate
       ? `/${nextPage}?date=${encodeURIComponent(selectedDate)}`
       : `/${nextPage}`;
-    router.push(targetUrl);
-  }, [panelAccess, permissions, role, router, showToast]);
+    window.history.pushState(null, "", targetUrl);
+  }, [panelAccess, permissions, role, showToast]);
 
   const changePanelAccess = useCallback((id: string, enabled: boolean) => {
     setPanelAccess((current) => ({ ...current, [id]: enabled }));
@@ -160,7 +161,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
 
   return <>
     <AdminShell role={role} page={page} showSearch={!initialPatientId} headerTitle={initialPatientId ? "Patient record" : undefined} headerSubtitle={initialPatientId ? `Patient ID ${initialPatientId} · Clinical care` : undefined} onHeaderBack={initialPatientId ? () => router.push("/patients") : undefined} globalSearch={globalSearch} panelAccess={panelAccess} permissions={permissions} isOwner={isOwner} userName={visibleName} onRoleChange={() => {}} onPageChange={navigate} onSearchChange={setGlobalSearch} onSignOut={() => { void fetch("/api/auth/logout", { method: "POST" }); setAuth({ status: "signed-out" }); setPage("overview"); setGlobalSearch(""); }}>
-      {content}
+      <PanelScreen page={page}>{content}</PanelScreen>
     </AdminShell>
     {toast && <Toast message={toast} onClose={closeToast} />}
   </>;

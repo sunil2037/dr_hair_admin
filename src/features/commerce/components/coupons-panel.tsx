@@ -53,35 +53,41 @@ export function CouponsPanel({ coupons, products, onCouponsChange, onToast }: { 
         onToast(`${newCoupon.code} is created and live at checkout.`);
         return;
       }
-    } catch {}
-
-    onCouponsChange((current) => [newCoupon, ...current]);
-    setOpen(false);
-    onToast(`${newCoupon.code} added to offers list.`);
+      const error = await res.json().catch(() => ({}));
+      onToast(error.message || "Could not create coupon. Please try again.");
+    } catch {
+      onToast("Coupon service is unavailable. Please try again.");
+    }
   };
 
   const toggleCoupon = async (coupon: CouponRecord) => {
     if (coupon.status === "Expired") return;
     const nextStatus = coupon.status === "Active" ? "Scheduled" : "Active";
     try {
-      await fetch(`/api/admin/coupons/${coupon.id}`, {
+      const res = await fetch(`/api/admin/coupons/${coupon.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
       });
-    } catch {}
-    onCouponsChange((current) => current.map((item) => item.id === coupon.id ? { ...item, status: nextStatus } : item));
+      if (!res.ok) throw new Error("Coupon status update failed");
+      onCouponsChange((current) => current.map((item) => item.id === coupon.id ? { ...item, status: nextStatus } : item));
+    } catch {
+      onToast("Could not update coupon status.");
+    }
   };
 
   const removeCoupon = async (coupon: CouponRecord) => {
     try {
-      await fetch(`/api/admin/coupons/${coupon.id}`, {
+      const res = await fetch(`/api/admin/coupons/${coupon.id}`, {
         method: "DELETE",
       });
-    } catch {}
-    onCouponsChange((current) => current.filter((item) => item.id !== coupon.id));
-    onToast(`${coupon.code} removed.`);
-    setCouponToRemove(null);
+      if (!res.ok) throw new Error("Coupon removal failed");
+      onCouponsChange((current) => current.filter((item) => item.id !== coupon.id));
+      onToast(`${coupon.code} removed.`);
+      setCouponToRemove(null);
+    } catch {
+      onToast("Could not remove coupon.");
+    }
   };
 
   return <>

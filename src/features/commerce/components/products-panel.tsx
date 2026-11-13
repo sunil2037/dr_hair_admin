@@ -122,7 +122,10 @@ function featuredPlan(plans: ProductSupplyPlan[]) {
 }
 
 function productStock(product: ProductRecord) {
-  return getPlans(product).reduce((total, plan) => total + plan.stock, 0);
+  return getPlans(product).reduce((total, plan) => {
+    const stock = Number(plan.stock);
+    return total + (Number.isFinite(stock) ? Math.max(0, stock) : 0);
+  }, 0);
 }
 
 function asLines<T>(items: T[] | undefined, render: (item: T) => string) {

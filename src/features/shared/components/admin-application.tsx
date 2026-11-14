@@ -18,6 +18,7 @@ import { PanelScreen } from "./panel-screen";
 import { SignIn, type AdminIdentity } from "./sign-in";
 import { Toast } from "./ui";
 import { PatientDetailPage } from "../../operations/components/patient-detail-page";
+import { PatientAssessmentDetailPage } from "../../operations/components/patient-assessment-detail-page";
 import { useRouter } from "next/navigation";
 
 const initialAuditEvents = initialAudit.map((event) => ({ ...event, type: event.type as AuditEventRecord["type"] }));
@@ -28,7 +29,7 @@ const superAdminPermissions: AdminPermissionId[] = [
   "products.manage", "orders.manage", "promotions.manage", "commerce.export", "bookings.manage",
 ];
 
-export function AdminApplication({ initialPage = "overview", initialPatientId = null, initialBookingDate = "" }: { initialPage?: PageKey; initialPatientId?: string | null; initialBookingDate?: string }) {
+export function AdminApplication({ initialPage = "overview", initialPatientId = null, initialAssessmentRef = null, initialBookingDate = "" }: { initialPage?: PageKey; initialPatientId?: string | null; initialAssessmentRef?: string | null; initialBookingDate?: string }) {
   const router = useRouter();
   const [auth, setAuth] = useState<{ status: "checking" | "signed-out" | "signed-in"; admin?: AdminIdentity }>({ status: "checking" });
   const [actorEmail, setActorEmail] = useState("");
@@ -136,7 +137,9 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
   const content = useMemo(() => {
     switch (page) {
       case "overview": return <Dashboard role={role} userName={visibleName} onNavigate={navigate} onOpenPatient={(patientId) => router.push(`/patients/${encodeURIComponent(patientId)}`)} permissions={permissions} events={events} admins={adminRecords} onAudit={recordAudit} onToast={showToast} anchor={dashboardAnchor} />;
-      case "patients": return initialPatientId
+      case "patients": return initialAssessmentRef && initialPatientId
+        ? <PatientAssessmentDetailPage key={`${initialPatientId}:${initialAssessmentRef}`} patientId={initialPatientId} referenceNo={initialAssessmentRef} permissions={permissions} onToast={showToast} onAudit={recordAudit} />
+        : initialPatientId
         ? <PatientDetailPage key={initialPatientId} patientId={initialPatientId} role={role} onToast={showToast} onAudit={recordAudit} />
         : <OperationsPage kind="patients" globalSearch={globalSearch} onToast={showToast} permissions={permissions} onAudit={recordAudit} />;
       case "catalog": return <ProductManagement onToast={showToast} permissions={permissions} panelAccess={panelAccess} globalSearch={globalSearch} onAudit={recordAudit} />;
@@ -148,7 +151,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
       case "team": return role === "super-admin" ? <AdminAccountManagement /> : <Denied />;
       case "activity": return role === "super-admin" ? <AuditLog globalSearch={globalSearch} onToast={showToast} events={events} role={role} onOpenPatient={(patientId) => router.push(`/patients/${encodeURIComponent(patientId)}`)} onAudit={recordAudit} /> : <Denied />;
     }
-  }, [actorName, adminRecords, bookingDate, changePanelAccess, dashboardAnchor, events, features, globalSearch, initialPatientId, navigate, page, panelAccess, permissions, recordAudit, role, router, setFeatures, showToast, visibleName]);
+  }, [actorName, adminRecords, bookingDate, changePanelAccess, dashboardAnchor, events, features, globalSearch, initialAssessmentRef, initialPatientId, navigate, page, panelAccess, permissions, recordAudit, role, router, setFeatures, showToast, visibleName]);
 
   if (auth.status === "checking") return <AdminSessionSkeleton />;
 
@@ -160,7 +163,7 @@ export function AdminApplication({ initialPage = "overview", initialPatientId = 
   }} />;
 
   return <>
-    <AdminShell role={role} page={page} showSearch={!initialPatientId} headerTitle={initialPatientId ? "Patient record" : undefined} headerSubtitle={initialPatientId ? `Patient ID ${initialPatientId} · Clinical care` : undefined} onHeaderBack={initialPatientId ? () => router.push("/patients") : undefined} globalSearch={globalSearch} panelAccess={panelAccess} permissions={permissions} isOwner={isOwner} userName={visibleName} onRoleChange={() => {}} onPageChange={navigate} onSearchChange={setGlobalSearch} onSignOut={() => { void fetch("/api/auth/logout", { method: "POST" }); setAuth({ status: "signed-out" }); setPage("overview"); setGlobalSearch(""); }}>
+    <AdminShell role={role} page={page} showSearch={!initialPatientId} headerTitle={initialAssessmentRef ? "Assessment detail" : initialPatientId ? "Patient record" : undefined} headerSubtitle={initialAssessmentRef ? `${initialAssessmentRef} · Patient ${initialPatientId}` : initialPatientId ? `Patient ID ${initialPatientId} · Clinical care` : undefined} onHeaderBack={initialAssessmentRef && initialPatientId ? () => router.push(`/patients/${encodeURIComponent(initialPatientId)}`) : initialPatientId ? () => router.push("/patients") : undefined} globalSearch={globalSearch} panelAccess={panelAccess} permissions={permissions} isOwner={isOwner} userName={visibleName} onRoleChange={() => {}} onPageChange={navigate} onSearchChange={setGlobalSearch} onSignOut={() => { void fetch("/api/auth/logout", { method: "POST" }); setAuth({ status: "signed-out" }); setPage("overview"); setGlobalSearch(""); }}>
       <PanelScreen page={page}>{content}</PanelScreen>
     </AdminShell>
     {toast && <Toast message={toast} onClose={closeToast} />}

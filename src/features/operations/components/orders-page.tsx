@@ -31,6 +31,25 @@ interface BackendOrder {
   payment_status?: string;
 }
 
+interface LiveTrackingEvent {
+  date: string;
+  status: string;
+  activity: string;
+  location: string;
+}
+
+interface LiveTrackingData {
+  awb_code: string;
+  courier: string;
+  current_status: string;
+  estimated_delivery: string;
+  origin: string;
+  destination: string;
+  track_url: string;
+  updated_at: string;
+  events: LiveTrackingEvent[];
+}
+
 function mapBackendOrder(apiOrder: BackendOrder): OrderRecord {
   const primaryItem = apiOrder.items?.[0]?.title || apiOrder.items?.[0]?.name || "Product";
   const extraItemsCount = (apiOrder.items?.length || 1) - 1;
@@ -147,6 +166,8 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
   const [couponFilter, setCouponFilter] = useState("All coupons");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [trackingState, setTrackingState] = useState<{ orderId: string; data: LiveTrackingData | null; loading: boolean; error: string }>({ orderId: "", data: null, loading: false, error: "" });
+  const [trackingRefreshKey, setTrackingRefreshKey] = useState(0);
   const [dispatchByOrder, setDispatchByOrder] = useState<Record<string, { courier: string; trackingNumber: string }>>({});
   const [shiprocketLoading, setShiprocketLoading] = useState(false);
   const [cancelOrder, setCancelOrder] = useState<OrderRecord | null>(null);
@@ -211,6 +232,38 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
     return text.includes(search) && matchesTab && matchesPayment && matchesProduct && matchesCoupon && matchesDate;
   }), [normalizedOrders, tab, search, paymentFilter, productFilter, couponFilter, dateCutoff]);
   const eligibleSelected = filteredOrders.filter((order) => selectedIds.includes(order.id) && canStartPreparing(order));
+
+  useEffect(() => {
+    const orderId = selectedOrder?.id;
+    const shipmentId = selectedOrder?.shiprocketShipmentId;
+    if (!orderId || !shipmentId) return;
+
+    let ignore = false;
+    const loadTracking = async () => {
+      setTrackingState({ orderId, data: null, loading: true, error: "" });
+      try {
+        const res = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}/tracking`, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.message || "Tracking updates could not be loaded.");
+        if (!ignore) {
+          setTrackingState({ orderId, data: json.data ?? json, loading: false, error: "" });
+        }
+      } catch (error) {
+        if (!ignore) setTrackingState({ orderId, data: null, loading: false, error: error instanceof Error ? error.message : "Tracking updates could not be loaded." });
+      } finally {
+        if (!ignore) setTrackingState((current) => current.orderId === orderId ? { ...current, loading: false } : current);
+      }
+    };
+
+    void loadTracking();
+    const timer = window.setInterval(() => void loadTracking(), 60_000);
+    return () => {
+      ignore = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedOrder?.id, selectedOrder?.shiprocketShipmentId, trackingRefreshKey]);
+
+  const selectedTracking = trackingState.orderId === selectedOrder?.id ? trackingState : null;
 
   const startPreparation = async (order: OrderRecord) => {
     if (!canStartPreparing(order)) {
@@ -495,6 +548,7 @@ export function OrdersPage({ globalSearch, onToast, onAudit = () => {}, canExpor
 
         {selectedOrder && <Modal className="order-details-modal order-workflow-modal" title={`Order ${selectedOrder.id}`} description={`${selectedOrder.customer} · ${selectedOrder.date}`} submitLabel={nextAction(selectedOrder)} onClose={() => setSelectedOrderId(null)} onSubmit={handlePrimaryAction}>
           <OrderDetails order={selectedOrder} relatedOrders={normalizedOrders.filter((order) => order.customerEmail && order.customerEmail === selectedOrder.customerEmail && order.id !== selectedOrder.id).slice(0, 4)} />
+          {selectedOrder.shiprocketShipmentId && <LiveTrackingPanel tracking={selectedTracking?.data ?? null} loading={selectedTracking?.loading ?? false} error={selectedTracking?.error ?? ""} onRefresh={() => setTrackingRefreshKey((key) => key + 1)} />}
           {selectedOrder.status === "Preparing" && <div className="shipping-entry"><div className="field-heading"><Truck size={14} />Dispatch details</div>{selectedOrder.shiprocketShipmentId ? <p className="form-help">Shiprocket shipment {selectedOrder.shiprocketShipmentId} · AWB {selectedOrder.trackingNumber || "pending"}</p> : selectedOrder.shiprocketStatus === "needs_review" || selectedOrder.shiprocketStatus === "processing" ? <div className="order-action-notice"><ShieldAlert size={14} /><span>Shiprocket request needs reconciliation in the Shiprocket panel before retrying.</span></div> : <button className="button button-secondary" type="button" disabled={shiprocketLoading} onClick={() => void createShiprocketShipment(selectedOrder)}><Truck size={13} />{shiprocketLoading ? "Creating Shiprocket shipment…" : "Create Shiprocket shipment & request pickup"}</button>}<div className="form-grid-two"><div className="field"><label htmlFor="order-courier">Courier</label><input id="order-courier" value={dispatchDetails.courier} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, courier: event.target.value } }))} placeholder="e.g. Delhivery" /></div><div className="field"><label htmlFor="order-tracking">Tracking / AWB number</label><input id="order-tracking" value={dispatchDetails.trackingNumber} onChange={(event) => setDispatchByOrder((current) => ({ ...current, [selectedOrder.id]: { ...dispatchDetails, trackingNumber: event.target.value } }))} placeholder="Enter courier tracking number" /></div></div><p className="form-help">Use Shiprocket to create a shipment and request pickup, or enter courier details manually.</p></div>}
           {selectedOrder.paymentStatus !== "Paid" && selectedOrder.paymentMethod !== "Cash on Delivery" && ["New", "Needs attention"].includes(selectedOrder.status) && <div className="order-action-notice"><ShieldAlert size={14} /><span>Payment is {selectedOrder.paymentStatus?.toLowerCase() ?? "not confirmed"}. Confirm payment before starting fulfilment.</span></div>}
           <div className="order-modal-actions">{canCancel(selectedOrder) && <button className="button button-secondary danger-button" onClick={() => { setCancelOrder(selectedOrder); setCancelReason("Customer requested cancellation"); }}>Cancel order</button>}{canRefund(selectedOrder) && <button className="button button-secondary" onClick={() => setRefundTarget(selectedOrder)}><Undo2 size={13} />Record refund</button>}</div>
@@ -519,6 +573,36 @@ function OrderDetails({ order, relatedOrders }: { order: OrderRecord; relatedOrd
     <div className="order-detail-grid"><div className="detail-item"><span>Payment method</span><strong>{order.paymentMethod ?? "Not recorded"}</strong></div><div className="detail-item"><span>Payment state</span><StatusPill status={order.paymentStatus ?? "Pending"} /></div><div className="detail-item"><span>Fulfilment</span><StatusPill status={order.status} /></div><div className="detail-item"><span>Courier & tracking</span><strong>{order.courier ? `${order.courier} · ${order.trackingNumber ?? "No tracking number"}` : "Not dispatched"}</strong></div><div className="detail-item order-address"><span><MapPin size={12} /> Delivery address</span><strong>{order.shippingAddress ?? "Not recorded"}</strong></div>{order.refundReason && <div className="detail-item"><span>Last refund reason</span><strong>{order.refundReason}</strong></div>}{order.cancellationReason && <div className="detail-item"><span>Cancellation reason</span><strong>{order.cancellationReason}</strong></div>}{order.returnReason && <div className="detail-item"><span>Return reason</span><strong>{order.returnReason}</strong></div>}</div>
     <div className="order-detail-block"><div className="field-heading"><Activity size={14} />Order history</div><div className="order-timeline">{(order.timeline ?? []).map((event, index) => <div className="order-timeline-item" key={`${event.label}-${index}`}><span className={event.done ? "done" : ""}>{event.done ? <Check size={11} /> : <span />}</span><div><strong>{event.label}</strong><small>{event.date}</small></div></div>)}</div></div>
   </>;
+}
+
+function LiveTrackingPanel({ tracking, loading, error, onRefresh }: { tracking: LiveTrackingData | null; loading: boolean; error: string; onRefresh: () => void }) {
+  const lastUpdated = tracking?.updated_at ? new Date(tracking.updated_at) : null;
+  const formattedUpdate = lastUpdated && !Number.isNaN(lastUpdated.getTime())
+    ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(lastUpdated)
+    : tracking?.updated_at;
+
+  return <section className="order-detail-block" aria-label="Live shipment tracking">
+    <div className="field-heading"><Truck size={14} />Live Shiprocket tracking
+      <button className="button button-secondary" type="button" disabled={loading} onClick={onRefresh} style={{ marginLeft: "auto", minHeight: 32 }}>
+        {loading ? "Refreshing…" : "Refresh"}
+      </button>
+    </div>
+    {error && <p className="form-help" role="status">{error}</p>}
+    {tracking && <>
+      <div className="detail-item"><span>Current status</span><strong>{tracking.current_status || "Waiting for the courier’s first scan"}</strong></div>
+      <div className="detail-item"><span>Courier · AWB</span><strong>{[tracking.courier, tracking.awb_code].filter(Boolean).join(" · ") || "Tracking details pending"}</strong></div>
+      {tracking.estimated_delivery && <div className="detail-item"><span>Estimated delivery</span><strong>{tracking.estimated_delivery}</strong></div>}
+      {formattedUpdate && <p className="form-help">Last courier update: {formattedUpdate}</p>}
+      {tracking.events.length > 0
+        ? <div className="order-timeline">{tracking.events.map((event, index) => <div className="order-timeline-item" key={`${event.date}-${event.activity}-${index}`}>
+            <span className={index === 0 ? "done" : ""}>{index === 0 ? <Check size={11} /> : <span />}</span>
+            <div><strong>{event.activity || event.status || "Shipment update"}</strong><small>{[event.location, event.date].filter(Boolean).join(" · ")}</small></div>
+          </div>)}</div>
+        : <p className="form-help">Shiprocket has not received a courier scan for this shipment yet.</p>}
+      {tracking.track_url && <a href={tracking.track_url} target="_blank" rel="noreferrer" className="form-help">Open carrier tracking</a>}
+    </>}
+    {!tracking && !loading && !error && <p className="form-help">Tracking refreshes automatically while this order is open.</p>}
+  </section>;
 }
 
 function QueueMetric({ icon, label, value, foot, tone }: { icon: React.ReactNode; label: string; value: string; foot: string; tone: string }) {

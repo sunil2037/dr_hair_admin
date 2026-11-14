@@ -111,7 +111,7 @@ export interface PatientDocument {
   uploaderRole?: "Super Admin" | "Admin";
 }
 
-export type HairTestStatus = "Draft" | "In review" | "Approved" | "Shared";
+export type HairTestStatus = "Draft" | "In review" | "Approved" | "Shared" | "Private";
 
 export interface HairTestRecord {
   id: string;
@@ -125,6 +125,8 @@ export interface HairTestRecord {
   status: HairTestStatus;
   createdAt: string;
   uploadedBy: string;
+  recordKind?: "assessment" | "report";
+  aiAssessmentStatus?: "queued" | "processing" | "ready" | "failed" | "not_available";
 }
 
 export interface PatientReportNotification {

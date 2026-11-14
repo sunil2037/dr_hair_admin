@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Activity, CalendarDays, ChevronDown, ClipboardList, Copy, Download, Eye, EyeOff, FileCheck2, FileText, History, LoaderCircle, LockKeyhole, Mail, Pencil, Phone, Pill, Plus, RotateCcw, Search, Share2, ShieldCheck, Trash2, UploadCloud, UserRound, X } from "lucide-react";
 import type { Role } from "../../shared/types";
@@ -90,6 +91,7 @@ function formatDate(value?: string) {
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === "object"); }
 
 export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patientId: string; role: Role; onToast: (message: string) => void; onAudit: (action: string, target: string) => void }) {
+  const router = useRouter();
   const [details, setDetails] = useState<PatientDetails | null>(null);
   const [pageNow, setPageNow] = useState<number | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
@@ -630,7 +632,10 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
         <section className="min-w-0 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <SectionHeading icon={<ClipboardList size={17} />} title="Hair assessment" subtitle="App answers and scalp photos, with previous submissions available." />
-            {details.assessments.length > 1 && <label className="block w-full sm:max-w-[260px]"><span className="sr-only">Choose assessment</span><select value={viewedAssessmentId} onChange={(event) => { const assessment = details.assessments.find((item) => String(item.id) === event.target.value); setViewedAssessmentId(event.target.value); setSelectedAssessment(String(assessment?.reference_no ?? "")); }} className="w-full rounded-xl border border-slate-200 bg-[#F8FAFC] px-3 py-2.5 text-xs font-semibold text-[#1A365D]">{details.assessments.map((assessment, index) => <option key={assessment.id} value={String(assessment.id)}>{index === 0 ? "Latest" : `Previous ${index}`} · {assessment.reference_no || assessment.id}</option>)}</select></label>}
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              {viewedAssessment.reference_no && <button type="button" className="button button-secondary w-full sm:w-auto" onClick={() => router.push(`/patients/${encodeURIComponent(patientId)}/assessments/${encodeURIComponent(String(viewedAssessment.reference_no))}`)}>Open full assessment</button>}
+              {details.assessments.length > 1 && <label className="block w-full sm:max-w-[260px]"><span className="sr-only">Choose assessment</span><select value={viewedAssessmentId} onChange={(event) => { const assessment = details.assessments.find((item) => String(item.id) === event.target.value); setViewedAssessmentId(event.target.value); setSelectedAssessment(String(assessment?.reference_no ?? "")); }} className="w-full rounded-xl border border-slate-200 bg-[#F8FAFC] px-3 py-2.5 text-xs font-semibold text-[#1A365D]">{details.assessments.map((assessment, index) => <option key={assessment.id} value={String(assessment.id)}>{index === 0 ? "Latest" : `Previous ${index}`} · {assessment.reference_no || assessment.id}</option>)}</select></label>}
+            </div>
           </div>
           {viewedAssessment ? <>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F4F8FB] px-4 py-3.5">
@@ -642,12 +647,22 @@ export function PatientDetailPage({ patientId, role, onToast, onAudit }: { patie
                     const status = String(viewedAssessment.status || (details.treatments.length ? "reviewed" : "submitted"));
                     const isReviewed = status === "reviewed" || details.treatments.some((t) => t.reference_no === viewedAssessment.reference_no);
                     const isUnderReview = status === "under_review";
+                    const isArchived = status === "archived";
+                    const aiStatus = String(viewedAssessment.ai_assessment_status || (viewedAssessment.ai_assessment ? "ready" : "not_available"));
+                    const aiStatusLabel: Record<string, string> = { queued: "AI queued", processing: "AI processing", ready: "AI ready", failed: "AI needs retry", not_available: "AI status unavailable" };
                     return (
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                        isReviewed ? "bg-emerald-100 text-emerald-800" : isUnderReview ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"
-                      }`}>
-                        {isReviewed ? "Reviewed & Prescribed" : isUnderReview ? "Under Review" : "Awaiting Doctor Review"}
-                      </span>
+                      <>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          isArchived ? "bg-slate-100 text-slate-700" : isReviewed ? "bg-emerald-100 text-emerald-800" : isUnderReview ? "bg-blue-100 text-blue-800" : "bg-amber-100 text-amber-800"
+                        }`}>
+                          {isArchived ? "Archived" : isReviewed ? "Reviewed & Prescribed" : isUnderReview ? "Under Review" : "Awaiting Doctor Review"}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          aiStatus === "ready" ? "bg-emerald-50 text-emerald-700" : aiStatus === "failed" ? "bg-rose-50 text-rose-700" : aiStatus === "queued" || aiStatus === "processing" ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"
+                        }`}>
+                          {aiStatusLabel[aiStatus] || "AI status unavailable"}
+                        </span>
+                      </>
                     );
                   })()}
                 </div>
